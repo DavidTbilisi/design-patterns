@@ -26,6 +26,7 @@ iframe{width:1280px; height:720px; border:1px solid #30363d; display:block;}
    Run in a browser, or headless:  tools/run_playground_e2e.sh
    ============================================================ */
 const LSKEY='neuralos-pattern-playground-v1';
+const LAYKEY='neuralos-pattern-playground-layout-v1';
 const frame=document.getElementById('sut');
 const tests=[];
 function test(name, fn){ tests.push({name, fn}); }
@@ -33,7 +34,7 @@ const tick=ms=>new Promise(r=>setTimeout(r, ms));
 
 function freshFrame(clearStorage=true){
   return new Promise((res, rej)=>{
-    if(clearStorage) localStorage.removeItem(LSKEY);   // same-origin: storage is shared with the iframe
+    if(clearStorage){ localStorage.removeItem(LSKEY); localStorage.removeItem(LAYKEY); }   // same-origin: storage is shared with the iframe
     const to=setTimeout(()=>rej(new Error('iframe load timeout')), 8000);
     frame.onload=()=>{
       clearTimeout(to);
@@ -207,15 +208,15 @@ test('concrete-example toggle reskins nodes in place; roles and checker unaffect
   w.document.getElementById('btnConcrete').click();
   assert(w.PG.concrete, 'concrete mode on');
   const titles=[...w.document.querySelectorAll('.node .title')].map(t=>t.textContent);
-  assert(titles.includes('TCPConnection') && titles.includes('TCPListen'), 'concrete names shown: '+titles.join(','));
+  assert(titles.includes('MediaPlayer') && titles.includes('Playing'), 'concrete names shown: '+titles.join(','));
   assert(w.PG.nodes.some(n=>n.role==='Context'), 'underlying roles unchanged');
-  assert([...w.document.querySelectorAll('.node .mem')].some(t=>t.textContent.includes('open(conn)')), 'concrete members shown');
+  assert([...w.document.querySelectorAll('.node .mem')].some(t=>t.textContent.includes('pressPlay')), 'concrete members shown');
   w.checkGraph();
   assert(w.document.getElementById('successBox').style.display==='block', 'checker still passes on roles');
-  assert(w.document.getElementById('codePre').textContent.includes('class TCPConnection'), 'codegen uses concrete names');
+  assert(w.document.getElementById('codePre').textContent.includes('class MediaPlayer'), 'codegen uses concrete names');
   w.document.getElementById('btnConcrete').click();
   const back=[...w.document.querySelectorAll('.node .title')].map(t=>t.textContent);
-  assert(back.includes('Context') && !back.includes('TCPConnection'), 'toggle off restores abstract roles');
+  assert(back.includes('Context') && !back.includes('MediaPlayer'), 'toggle off restores abstract roles');
 });
 
 test('every pattern has a complete concrete example (all roles mapped)', async ()=>{
@@ -225,6 +226,28 @@ test('every pattern has a complete concrete example (all roles mapped)', async (
     assert(ex && ex.ex && ex.story, p.id+' has no example');
     for(const [r] of p.roles) assert(ex.map[r], `${p.id}: role ${r} unmapped`);
   }
+});
+
+test('panes resize by dragging dividers and the drawer grip; layout persists', async ()=>{
+  let w=await freshFrame();
+  const divR=w.document.getElementById('divR');
+  const r=divR.getBoundingClientRect();
+  fire(w, divR, 'pointerdown', r.left+2, r.top+100);
+  fire(w, divR, 'pointermove', r.left-98, r.top+100);
+  fire(w, divR, 'pointerup', r.left-98, r.top+100);
+  assert(w.document.getElementById('main').style.gridTemplateColumns.includes('420px'),
+    'side pane 320→420: '+w.document.getElementById('main').style.gridTemplateColumns);
+  w.document.getElementById('tabCode').click();
+  const grip=w.document.getElementById('drawerGrip');
+  const g=grip.getBoundingClientRect();
+  fire(w, grip, 'pointerdown', g.left+60, g.top+3);
+  fire(w, grip, 'pointermove', g.left+60, g.top-57);
+  fire(w, grip, 'pointerup', g.left+60, g.top-57);
+  eq(w.document.getElementById('codeDrawer').style.height, '300px', 'code drawer 240→300');
+  w=await freshFrame(false);                    // reload keeps the layout key
+  assert(w.document.getElementById('main').style.gridTemplateColumns.includes('420px'), 'layout persisted');
+  w.document.getElementById('tabCode').click();
+  eq(w.document.getElementById('codeDrawer').style.height, '300px', 'drawer height persisted');
 });
 
 test('build task: correct wiring passes the check and persists progress', async ()=>{
