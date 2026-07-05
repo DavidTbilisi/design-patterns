@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>pattern-playground e2e</title>
+<style>
+body{margin:0; background:#0d1117; color:#e6edf3; font:13px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif;}
+#results{padding:10px 14px;}
+.t{padding:3px 8px; border-left:3px solid #3fb950;}
+.t.fail{border-left-color:#f85149; color:#f85149; white-space:pre-wrap;}
+#summary{font-weight:700; padding:8px; font-size:15px;}
+#summary.bad{color:#f85149;} #summary.good{color:#3fb950;}
+iframe{width:1280px; height:720px; border:1px solid #30363d; display:block;}
+</style>
+</head>
+<body>
+<div id="summary">running…</div>
+<div id="results"></div>
+<iframe id="sut" src="about:blank"></iframe>
+
+<script>
+/* ============================================================
+   Zero-dependency e2e suite for pattern-playground.html.
+   Drives the real page in the iframe with real PointerEvents;
+   asserts through DOM state and the page's window.PG test API.
+   Run in a browser, or headless:  tools/run_playground_e2e.sh
+   ============================================================ */
+const LSKEY='neuralos-pattern-playground-v1';
+const frame=document.getElementById('sut');
+const tests=[];
+function test(name, fn){ tests.push({name, fn}); }
+const tick=ms=>new Promise(r=>setTimeout(r, ms));
+
+function freshFrame(clearStorage=true){
+  return new Promise((res, rej)=>{
+    if(clearStorage) localStorage.removeItem(LSKEY);   // same-origin: storage is shared with the iframe
+    const to=setTimeout(()=>rej(new Error('iframe load timeout')), 8000);
+    frame.onload=()=>{
+      clearTimeout(to);
+      const w=frame.contentWindow;
+      // synthetic pointer ids have no active pointer → setPointerCapture would throw
+      w.Element.prototype.setPointerCapture=function(){};
+      w.Element.prototype.releasePointerCapture=function(){};
+      res(w);
+    };
+    frame.src='../pattern-playground.html?e2e='+Date.now();
+  });
+}
+
+function assert(cond, msg){ if(!cond) throw new Error(msg); }
+function eq(a, b, msg){ if(a!==b) throw new Error(`${msg} — expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`); }
+
+/* dispatch a real PointerEvent at iframe-viewport coordinates */
+function fire(w, el, type, x, y, extra={}){
+  el.dispatchEvent(new w.PointerEvent(type, {bubbles:true, cancelable:true, composed:true,
+    clientX:x, clientY:y, pointerId:1, isPrimary:true, button:0, ...extra}));
+}
+/* world→iframe-viewport coords for a point inside a node */
+function nodePoint(w, node, dx, dy){
+  const r=w.document.getElementById('svg').getBoundingClientRect();
+  const v=w.PG.view;
+  return [r.left+v.x+(node.x+dx)*v.k, r.top+v.y+(node.y+dy)*v.k];
+}
+function byRole(w, role){ const n=w.PG.nodes.find(n=>n.role===role); if(!n) throw new Error('no node with role '+role); return n; }
+function loadRef(w, pid){
+  const s=w.document.getElementById('refSelect');
+  s.value=pid; s.dispatchEvent(new w.Event('change'));
+}
+
+/* ---------------- tests ---------------- */
+
+test('boot loads the State reference with the full canonical edge set', async ()=>{
+  const w=await freshFrame();
+  const spec=w.PG.PAT['state'];
+  eq(w.PG.nodes.length, spec.roles.length, 'node count');
+  eq(w.PG.edges.length, spec.edges.length, 'edge count');
+  eq(w.PG.curTask.patternId, 'state', 'curTask');
+});
+
+test('all 23 references load with matching node/edge counts and a sequence diagram', async ()=>{
+  const w=await freshFrame();
+  for(const p of w.PG.PATTERNS){
+    loadRef(w, p.id);
+    eq(w.PG.nodes.length, p.roles.length, p.id+' node count');
+    eq(w.PG.edges.length, p.edges.length, p.id+' edge count');
+    assert(w.PG.SEQ[p.id], p.id+' has no SEQ entry');
+    assert(w.PG.seqSVG(p.id).includes('<svg'), p.id+' seqSVG did not render');
+  }
+});
+
+test('implements/extends edges route child-top → parent-bottom (UML inheritance)', async ()=>{
+  const w=await freshFrame();
+  loadRef(w, 'builder');
+  const i=w.PG.edges.findIndex(e=>e.verb==='implements');
+  assert(i>=0, 'builder has an implements edge');
+  const e=w.PG.edges[i];
+  const a=w.PG.nodes.find(n=>n.id===e.src), b=w.PG.nodes.find(n=>n.id===e.dst);
+  const d=w.document.getElementById('edgesG').children[i].querySelector('path').getAttribute('d');
+  const nums=d.match(/-?\d+(\.\d+)?/g).map(Number);
+  const [sx, sy]=[nums[0], nums[1]], [ex, ey]=[nums[nums.length-2], nums[nums.length-1]];
+  assert(Math.abs(sx-(a.x+a.w/2))<2 && Math.abs(sy-a.y)<2, `starts at child top-center (got ${sx},${sy})`);
+  assert(Math.abs(ex-(b.x+b.w/2))<2 && Math.abs(ey-(b.y+b.h))<2, `ends at parent bottom-center (got ${ex},${ey})`);
+});
+
+test('drag from out-port to a node opens the verb popover and creates the edge', async ()=>{
+  const w=await freshFrame();
+  w.PG.clearGraph();
+  const v=w.PG.view; v.x=20; v.y=20; v.k=1; w.PG.render();
+  const na=w.PG.addNode('Context','class',60,120);
+  const nb=w.PG.addNode('Strategy','interface',560,120);
+  const port=w.document.querySelector(`circle.port.out[data-nid="${na.id}"]`);
+  assert(port, 'out port exists');
+  const [px, py]=nodePoint(w, na, na.w, 38);
+  const [tx, ty]=nodePoint(w, nb, nb.w/2, 20);
+  fire(w, port, 'pointerdown', px, py);
+  fire(w, w.document.getElementById('svg'), 'pointermove', tx, ty);
+  fire(w, w.document.getElementById('svg'), 'pointerup', tx, ty);
+  const pop=w.document.getElementById('popover');
+  eq(pop.style.display, 'block', 'verb popover visible');
+  pop.querySelector('.vp[data-v="delegates"]').click();
+  eq(w.PG.edges.length, 1, 'edge created');
+  eq(w.PG.edges[0].verb, 'delegates', 'edge verb');
+  eq(w.PG.edges[0].src, na.id, 'edge source');
+});
+
+test('double-click (two real click cycles) opens the inline rename editor and commits (regression)', async ()=>{
+  const w=await freshFrame();
+  w.PG.clearGraph();
+  const v=w.PG.view; v.x=20; v.y=20; v.k=1; w.PG.render();
+  const n=w.PG.addNode('Client','client',100,100);
+  const [hx, hy]=nodePoint(w, n, n.w/2, 10);
+  const svg=w.document.getElementById('svg');
+  // no native dblclick is dispatched: render() rebuilds the SVG between the two
+  // clicks so real browsers never synthesize one — the manual double-tap
+  // detection in pointerdown must carry this alone
+  for(let i=0;i<2;i++){ const g=w.document.querySelector(`.node[data-nid="${n.id}"]`);
+    fire(w, g, 'pointerdown', hx, hy); fire(w, svg, 'pointerup', hx, hy); }
+  const inp=w.document.getElementById('renameBox');
+  assert(inp, 'inline rename editor appeared');
+  inp.value='Invoker';
+  inp.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Enter', bubbles:true}));
+  eq(w.PG.nodes[0].name, 'Invoker', 'node renamed');
+  assert(!w.document.getElementById('renameBox'), 'editor closed after commit');
+  assert(w.document.querySelector('.node .title').textContent==='Invoker', 'title re-rendered');
+});
+
+test('native dblclick fallback (retargeted to svg root) opens the editor; Escape cancels', async ()=>{
+  const w=await freshFrame();
+  w.PG.clearGraph();
+  const v=w.PG.view; v.x=20; v.y=20; v.k=1; w.PG.render();
+  const n=w.PG.addNode('Client','client',100,100);
+  const [hx, hy]=nodePoint(w, n, n.w/2, 10);
+  fire(w, w.document.getElementById('svg'), 'dblclick', hx, hy);
+  const inp=w.document.getElementById('renameBox');
+  assert(inp, 'editor opened from retargeted dblclick');
+  inp.value='ShouldNotStick';
+  inp.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
+  eq(w.PG.nodes[0].name, 'Client', 'Escape leaves the name unchanged');
+  assert(!w.document.getElementById('renameBox'), 'editor closed after cancel');
+});
+
+test('double-click on the member compartment edits methods; commit resizes the node', async ()=>{
+  const w=await freshFrame();
+  w.PG.clearGraph();
+  const v=w.PG.view; v.x=20; v.y=20; v.k=1; w.PG.render();
+  const n=w.PG.addNode('Client','client',100,100);
+  const [mx, my]=nodePoint(w, n, n.w/2, 50);          // below the y=44 separator
+  const svg=w.document.getElementById('svg');
+  for(let i=0;i<2;i++){ const g=w.document.querySelector(`.node[data-nid="${n.id}"]`);
+    fire(w, g, 'pointerdown', mx, my); fire(w, svg, 'pointerup', mx, my); }
+  const ta=w.document.getElementById('memberBox');
+  assert(ta, 'member editor appeared');
+  const hBefore=n.h;
+  ta.value='+ start()\n+ stop()\n- engine: Engine';
+  ta.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Enter', ctrlKey:true, bubbles:true}));
+  eq(w.PG.nodes[0].members.join('|'), '+ start()|+ stop()|- engine: Engine', 'members updated');
+  assert(w.PG.nodes[0].h>hBefore, 'node grew to fit the new members');
+  assert([...w.document.querySelectorAll('.node .mem')].some(t=>t.textContent==='+ start()'), 'member rendered');
+});
+
+test('rename keeps custom members instead of resetting to role defaults', async ()=>{
+  const w=await freshFrame();
+  w.PG.clearGraph();
+  const v=w.PG.view; v.x=20; v.y=20; v.k=1; w.PG.render();
+  const n=w.PG.addNode('Client','client',100,100);
+  const svg=w.document.getElementById('svg');
+  const [mx, my]=nodePoint(w, n, n.w/2, 50);
+  for(let i=0;i<2;i++){ const g=w.document.querySelector(`.node[data-nid="${n.id}"]`);
+    fire(w, g, 'pointerdown', mx, my); fire(w, svg, 'pointerup', mx, my); }
+  const ta=w.document.getElementById('memberBox');
+  ta.value='+ turnOn()';
+  ta.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Enter', ctrlKey:true, bubbles:true}));
+  const [hx, hy]=nodePoint(w, n, n.w/2, 10);          // header this time
+  for(let i=0;i<2;i++){ const g=w.document.querySelector(`.node[data-nid="${n.id}"]`);
+    fire(w, g, 'pointerdown', hx, hy); fire(w, svg, 'pointerup', hx, hy); }
+  const inp=w.document.getElementById('renameBox');
+  assert(inp, 'rename editor appeared on header double-tap');
+  inp.value='Lamp';
+  inp.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Enter', bubbles:true}));
+  eq(w.PG.nodes[0].name, 'Lamp', 'renamed');
+  eq(w.PG.nodes[0].members.join('|'), '+ turnOn()', 'custom members survived the rename');
+});
+
+test('build task: correct wiring passes the check and persists progress', async ()=>{
+  const w=await freshFrame();
+  w.document.querySelector('#modeTabs button[data-mode="build"]').click();
+  w.PG.startBuild('singleton');
+  w.loadSolution(); w.checkGraph();
+  eq(w.PG.progress['build:singleton'], 1, 'progress recorded');
+  assert(JSON.parse(localStorage.getItem(LSKEY))['build:singleton']===1, 'persisted to localStorage');
+  const sbox=w.document.getElementById('successBox');
+  assert(sbox && sbox.style.display==='block', 'success box shown');
+});
+
+test('build task: a wrong verb is flagged, no progress recorded', async ()=>{
+  const w=await freshFrame();
+  w.document.querySelector('#modeTabs button[data-mode="build"]').click();
+  w.PG.startBuild('adapter');
+  w.loadSolution();
+  const e=w.PG.edges.find(e=>e.verb==='wraps');
+  assert(e, 'adapter solution has a wraps edge');
+  e.verb='delegates'; w.PG.render();
+  w.checkGraph();
+  assert(w.document.querySelector('#findings .finding.f-verb, #findings .finding.f-miss'), 'verb/miss finding shown');
+  assert(!w.PG.progress['build:adapter'], 'no progress on failure');
+});
+
+test('fix task: sabotage loads, solution+check clears it', async ()=>{
+  const w=await freshFrame();
+  w.document.querySelector('#modeTabs button[data-mode="fix"]').click();
+  w.PG.startFix('fx-state');
+  const t=w.PG.FIXTASKS.find(t=>t.id==='fx-state');
+  eq(w.PG.edges.length, t.edges.length, 'sabotaged edge set loaded');
+  w.loadSolution(); w.checkGraph();
+  eq(w.PG.progress['fix:fx-state'], 1, 'fix progress recorded');
+});
+
+test('quiz: sequence diagram is hidden until answered, then revealed with feedback', async ()=>{
+  const w=await freshFrame();
+  w.document.querySelector('#modeTabs button[data-mode="quiz"]').click();
+  await tick(30);
+  const pane=w.document.getElementById('seqPane');
+  assert(pane.textContent.includes('Answer the scenario first'), 'spoiler guard text shown');
+  const answer=w.PG.quiz.cur;
+  w.document.querySelector(`.qc[data-p="${answer}"]`).click();
+  assert(w.document.querySelector('#quizFeedback .f-ok, #side .f-ok'), 'correct-answer feedback shown');
+  eq(w.PG.progress['quiz:'+answer], 1, 'quiz progress recorded');
+  assert(pane.innerHTML.includes('<svg'), 'sequence diagram revealed after answering');
+});
+
+test('drawer: seq tab opens tall seq pane, code tab switches back, second click closes', async ()=>{
+  const w=await freshFrame();
+  const d=w.document.getElementById('codeDrawer');
+  w.document.getElementById('tabSeq').click();
+  assert(d.classList.contains('open') && d.classList.contains('seqmode'), 'seq tab opens seqmode');
+  assert(w.document.getElementById('seqPane').innerHTML.includes('<svg'), 'seq svg rendered for boot reference');
+  w.document.getElementById('tabCode').click();
+  assert(d.classList.contains('open') && !d.classList.contains('seqmode'), 'code tab switches mode');
+  w.document.getElementById('tabCode').click();
+  assert(!d.classList.contains('open'), 'same tab again closes drawer');
+});
+
+test('codegen mirrors the graph (adapter: class Adapter implements Target)', async ()=>{
+  const w=await freshFrame();
+  loadRef(w, 'adapter');
+  const txt=w.document.getElementById('codePre').textContent;
+  assert(txt.includes('class Adapter'), 'class Adapter present');
+  assert(txt.includes('implements Target'), 'implements Target present');
+  assert(txt.includes('interface Target'), 'interface Target present');
+});
+
+test('edge popover: delete removes the edge', async ()=>{
+  const w=await freshFrame();
+  loadRef(w, 'adapter');
+  const before=w.PG.edges.length;
+  const hit=w.document.querySelector('.edgeHit');
+  const r=hit.getBoundingClientRect();
+  fire(w, hit, 'pointerdown', r.left+r.width/2, r.top+r.height/2);
+  const pop=w.document.getElementById('popover');
+  eq(pop.style.display, 'block', 'edge popover visible');
+  pop.querySelector('[data-a=del]').click();
+  eq(w.PG.edges.length, before-1, 'edge deleted');
+});
+
+test('progress survives a reload', async ()=>{
+  let w=await freshFrame();
+  w.document.querySelector('#modeTabs button[data-mode="build"]').click();
+  w.PG.startBuild('singleton'); w.loadSolution(); w.checkGraph();
+  w=await freshFrame(false);                       // reload WITHOUT clearing storage
+  assert(parseInt(w.document.getElementById('doneCount').textContent,10)>=1, 'done count restored');
+  eq(w.PG.progress['build:singleton'], 1, 'progress object restored');
+});
+
+/* ---------------- runner ---------------- */
+(async ()=>{
+  const out=document.getElementById('results');
+  let pass=0, fail=0;
+  for(const t of tests){
+    const row=document.createElement('div'); row.className='t';
+    try{ await t.fn(); pass++; row.textContent='✓ '+t.name; }
+    catch(err){ fail++; row.classList.add('fail'); row.textContent='✗ '+t.name+' :: '+err.message; console.error('E2E FAIL', t.name, err); }
+    out.appendChild(row);
+  }
+  const s=document.getElementById('summary');
+  s.textContent=`E2E: ${pass} passed, ${fail} failed`;
+  s.className=fail?'bad':'good';
+  s.setAttribute('data-fail', String(fail));
+  document.title=fail?'E2E FAIL':'E2E PASS';
+  console.log('E2E-RESULT', JSON.stringify({pass, fail}));
+})();
+</script>
+</body>
+</html>

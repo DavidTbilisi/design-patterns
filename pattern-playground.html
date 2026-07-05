@@ -1,0 +1,1520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GoF Pattern Playground — node-wiring drill for the 23 design patterns</title>
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c2129; --line:#30363d; --text:#e6edf3;
+  --muted:#8b949e; --accent:#79c0ff; --pick:#f78166; --warn:#f85149; --ok:#3fb950;
+  --hl:rgba(247,129,102,0.18);
+  --k-interface:#bc8cff; --k-abstract:#ffa657; --k-class:#58a6ff; --k-client:#3fb950;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html,body{height:100%;}
+body{background:var(--bg); color:var(--text); font:14px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; overflow:hidden;}
+button{font:inherit; cursor:pointer; background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:5px 12px;}
+button:hover{border-color:var(--accent);}
+button.primary{background:#1f6feb; border-color:#1f6feb; color:#fff;}
+button.primary:hover{background:#388bfd;}
+button.small{padding:2px 8px; font-size:12px;}
+select{font:inherit; background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:4px 8px;}
+
+/* ---------- layout ---------- */
+#app{display:grid; grid-template-rows:48px 1fr; height:100vh;}
+header{display:flex; align-items:center; gap:14px; padding:0 14px; background:var(--panel); border-bottom:1px solid var(--line);}
+header h1{font-size:15px; font-weight:600; white-space:nowrap;}
+header h1 span{color:var(--pick);}
+.tabs{display:flex; gap:2px; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:2px;}
+.tabs button{border:none; background:transparent; color:var(--muted); border-radius:6px; padding:4px 12px;}
+.tabs button.active{background:var(--panel2); color:var(--text); box-shadow:inset 0 0 0 1px var(--line);}
+#progressPill{margin-left:auto; font-size:12px; color:var(--muted); border:1px solid var(--line); border-radius:99px; padding:3px 10px; white-space:nowrap;}
+#progressPill b{color:var(--ok);}
+
+#main{display:grid; grid-template-columns:212px 1fr 320px; min-height:0;}
+#palette{background:var(--panel); border-right:1px solid var(--line); overflow-y:auto; padding:10px;}
+#palette h3{font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:10px 0 6px;}
+.pal-item{display:flex; align-items:center; gap:8px; padding:6px 8px; margin-bottom:4px; background:var(--panel2); border:1px solid var(--line); border-radius:6px; cursor:grab; user-select:none; font-size:13px;}
+.pal-item:hover{border-color:var(--accent);}
+.pal-item.used{opacity:.35; cursor:default;}
+.pal-item .dot{width:9px; height:9px; border-radius:3px; flex:none;}
+.pal-item .st{font-size:10px; color:var(--muted); margin-left:auto;}
+.pal-item.decoy{border-style:dashed;}
+
+#canvasWrap{position:relative; overflow:hidden; background:
+  radial-gradient(circle at 1px 1px, #1b2129 1.1px, transparent 0) 0 0/22px 22px, var(--bg);}
+#svg{width:100%; height:100%; display:block; cursor:default;}
+#svg.panning{cursor:grabbing;}
+
+#side{background:var(--panel); border-left:1px solid var(--line); overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px;}
+#side h2{font-size:14px;}
+#side .catTag{font-size:10px; text-transform:uppercase; letter-spacing:.08em; padding:2px 7px; border-radius:99px; border:1px solid var(--line);}
+.cat-C{color:var(--ok); border-color:var(--ok)!important;}
+.cat-S{color:var(--accent); border-color:var(--accent)!important;}
+.cat-B{color:var(--k-interface); border-color:var(--k-interface)!important;}
+#brief{font-size:13px; color:var(--text); background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:10px;}
+#brief .muted{color:var(--muted); font-size:12px; margin-top:6px;}
+#findings{display:flex; flex-direction:column; gap:5px;}
+.finding{font-size:12.5px; padding:7px 9px; border-radius:6px; border:1px solid var(--line); background:var(--panel2); display:flex; gap:8px; align-items:flex-start;}
+.finding .ic{flex:none; font-weight:700;}
+.f-miss{border-color:#8957e5;} .f-miss .ic{color:#bc8cff;}
+.f-extra{border-color:var(--warn);} .f-extra .ic{color:var(--warn);}
+.f-verb{border-color:var(--pick);} .f-verb .ic{color:var(--pick);}
+.f-rev{border-color:var(--k-abstract);} .f-rev .ic{color:var(--k-abstract);}
+.f-info .ic{color:var(--muted);}
+.f-ok{border-color:var(--ok);} .f-ok .ic{color:var(--ok);}
+#successBox{display:none; border:1px solid var(--ok); border-radius:8px; padding:10px; background:rgba(63,185,80,.08); font-size:13px;}
+#successBox h3{color:var(--ok); font-size:13px; margin-bottom:6px;}
+#successBox .row{margin-top:6px; font-size:12.5px;}
+#successBox .row b{color:var(--accent);}
+.tasklist{display:flex; flex-direction:column; gap:3px;}
+.task-row{display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:6px; border:1px solid transparent; cursor:pointer; font-size:13px;}
+.task-row:hover{background:var(--panel2); border-color:var(--line);}
+.task-row.active{background:var(--panel2); border-color:var(--accent);}
+.task-row .done{color:var(--ok); width:14px; flex:none;}
+.task-row .fam{margin-left:auto; font-size:10px; color:var(--muted);}
+.btnrow{display:flex; gap:6px; flex-wrap:wrap;}
+.quiz-choices{display:flex; flex-direction:column; gap:6px; margin-top:10px;}
+.quiz-choices .qc{text-align:left; padding:8px 12px;}
+.quiz-choices .qc.right{border-color:var(--ok); color:var(--ok);}
+.quiz-choices .qc.wrong{border-color:var(--warn); color:var(--warn);}
+.quiz-choices .qc:disabled{cursor:default; opacity:.85;}
+
+/* ---------- code drawer ---------- */
+#codeDrawer{position:absolute; left:0; right:0; bottom:0; background:var(--panel); border-top:1px solid var(--line); transition:height .15s; height:28px; overflow:hidden; z-index:5;}
+#codeDrawer.open{height:240px;}
+#codeDrawer .bar{height:28px; display:flex; align-items:center; gap:10px; padding:0 12px; cursor:pointer; font-size:12px; color:var(--muted); user-select:none;}
+#codeDrawer .bar:hover{color:var(--text);}
+#codePre{height:calc(100% - 28px); overflow:auto; padding:4px 14px 14px; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre;}
+#codePre .kw{color:#ff7b72;} #codePre .ty{color:#79c0ff;} #codePre .cm{color:#8b949e;} #codePre .fn{color:#d2a8ff;}
+#codeDrawer .bar .dtab{padding:3px 9px; border-radius:5px;}
+#codeDrawer .bar .dtab:hover{color:var(--text);}
+#codeDrawer.open .bar .dtab.active{color:var(--text); background:var(--panel2); box-shadow:inset 0 0 0 1px var(--line);}
+#codeDrawer.open.seqmode{height:420px;}
+#seqPane{display:none; height:calc(100% - 28px); overflow:auto; padding:2px 14px 14px;}
+#codeDrawer.seqmode.open #seqPane{display:block;}
+#codeDrawer.seqmode #codePre{display:none;}
+#seqPane .seqNote{font-size:12.5px; color:var(--muted); padding:10px 0;}
+#seqPane .seqCap{font-size:11.5px; color:var(--muted); margin:2px 0 6px;}
+#seqPane .seqCap b{color:var(--accent); font-weight:600;}
+
+/* ---------- popover ---------- */
+#popover{position:absolute; z-index:10; background:var(--panel); border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 30px rgba(0,0,0,.5); padding:6px; display:none; max-height:340px; overflow-y:auto; width:196px;}
+#popover .vp{display:flex; align-items:center; gap:8px; padding:4px 8px; border-radius:5px; cursor:pointer; font-size:12.5px;}
+#popover .vp:hover{background:var(--panel2);}
+#popover .vp .sw{width:18px; height:3px; border-radius:2px; flex:none;}
+#popover .grp{font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); padding:5px 8px 2px;}
+#popover hr{border:none; border-top:1px solid var(--line); margin:5px 0;}
+#popover .act{color:var(--warn);}
+#popover .act2{color:var(--k-abstract);}
+
+/* ---------- svg nodes ---------- */
+.node rect.body{fill:#1c2129; stroke:var(--line); stroke-width:1.2; rx:8;}
+.node.selected rect.body{stroke:var(--pick); stroke-width:1.8;}
+.node text{user-select:none; pointer-events:none;}
+.node .title{font-size:12.5px; font-weight:600; fill:#fff;}
+.node .stereo{font-size:9.5px; fill:rgba(255,255,255,.75); font-style:italic;}
+.node .kindtag{font-size:9.5px; fill:var(--muted);}
+.node .mem{font-size:10px; fill:#adbac7; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+.node .mem.use{fill:var(--muted); font-style:italic;}
+.port{fill:#0d1117; stroke:var(--muted); stroke-width:1.5; cursor:crosshair;}
+.port:hover, .port.hot{stroke:var(--pick); fill:var(--pick);}
+.edgeHit{stroke:transparent; stroke-width:14; fill:none; cursor:pointer;}
+.edgeLbl{font-size:10.5px; paint-order:stroke; stroke:#0d1117; stroke-width:4px; user-select:none; pointer-events:none;}
+.ghost{pointer-events:none; stroke-dasharray:6 5;}
+
+#renameBox{position:absolute; z-index:8; font:12.5px/1.3 inherit; font-weight:600; background:#0d1117; color:#fff; border:1.5px solid var(--pick); border-radius:5px; padding:3px 7px; outline:none;}
+#memberBox{position:absolute; z-index:8; font:11.5px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; background:#0d1117; color:#adbac7; border:1.5px solid var(--accent); border-radius:5px; padding:4px 7px; outline:none; resize:both;}
+#help{position:absolute; top:10px; left:10px; z-index:6; font-size:11.5px; color:var(--muted); background:rgba(22,27,34,.85); border:1px solid var(--line); border-radius:8px; padding:7px 11px; pointer-events:none;}
+#zoomHud{position:absolute; bottom:36px; right:10px; z-index:6; display:flex; gap:4px;}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <h1>GoF <span>Pattern Playground</span></h1>
+  <div class="tabs" id="modeTabs">
+    <button data-mode="play" class="active">Playground</button>
+    <button data-mode="build">Build&nbsp;tasks</button>
+    <button data-mode="fix">Fix&nbsp;tasks</button>
+    <button data-mode="quiz">Scenario&nbsp;drill</button>
+  </div>
+  <select id="refSelect" title="Load a canonical reference solution"><option value="">Load reference…</option></select>
+  <button id="btnCheck" class="primary">Check ✓</button>
+  <button id="btnHint">Hint</button>
+  <button id="btnSolution">Solution</button>
+  <button id="btnClear">Clear</button>
+  <div id="progressPill"><b id="doneCount">0</b>/<span id="totalCount">0</span> tasks done</div>
+</header>
+
+<div id="main">
+  <aside id="palette"></aside>
+
+  <div id="canvasWrap">
+    <svg id="svg"><defs id="defs"></defs><g id="world"><g id="edgesG"></g><g id="nodesG"></g><g id="ghostG"></g></g></svg>
+    <div id="help">drag node header = move · drag ● port → node = wire · click wire = edit · Del = delete · wheel = zoom · drag background = pan · dbl-click header = rename · dbl-click members = edit methods (playground)</div>
+    <div id="zoomHud"><button class="small" id="zin">＋</button><button class="small" id="zout">－</button><button class="small" id="zfit">fit</button></div>
+    <div id="codeDrawer"><div class="bar" id="drawerBar"><span class="dtab active" data-t="code" id="tabCode">⌁ TypeScript skeleton</span><span class="dtab" data-t="seq" id="tabSeq">⇅ Sequence — how it runs</span><span id="drawerCue" style="margin-left:auto">▸ click to open</span></div><div id="codePre"></div><div id="seqPane"></div></div>
+  </div>
+
+  <aside id="side"></aside>
+</div>
+</div>
+<div id="popover"></div>
+
+<script>
+/* =====================================================================
+   DATA — verbs, role kinds, 23 pattern specs, curated fix tasks
+   Grounded in wiki/career-mission/gof-design-patterns.md (intents),
+   design-pattern-intuition.md (Table 1.2 "what varies"),
+   exam-compression.md (problem-shape triggers, killer contrasts).
+   ===================================================================== */
+const VERBS = [
+ // inheritance
+ {id:'implements', label:'implements',  color:'#8b949e', dash:'6 4', head:'tri',  grp:'inheritance'},
+ {id:'extends',    label:'extends',     color:'#8b949e', dash:null,  head:'tri',  grp:'inheritance'},
+ // structure
+ {id:'delegates',  label:'delegates to',color:'#58a6ff', dash:null,  head:'arr',  grp:'structure'},
+ {id:'wraps',      label:'wraps',       color:'#79c0ff', dash:null,  head:'arr',  grp:'structure'},
+ {id:'aggregates', label:'aggregates',  color:'#39c5cf', dash:null,  head:'dia',  grp:'structure'},
+ {id:'composes',   label:'composes',    color:'#39c5cf', dash:null,  head:'diaF', grp:'structure'},
+ // creation
+ {id:'creates',    label:'creates',     color:'#3fb950', dash:null,  head:'arr',  grp:'creation'},
+ {id:'clones',     label:'clones',      color:'#3fb950', dash:'3 4', head:'arr',  grp:'creation'},
+ // behavior
+ {id:'requests',   label:'requests',    color:'#ffa657', dash:null,  head:'arr',  grp:'behavior'},
+ {id:'notifies',   label:'notifies',    color:'#bc8cff', dash:null,  head:'arr',  grp:'behavior'},
+ {id:'switches',   label:'switches behavior', color:'#f85149', dash:null, head:'arr', grp:'behavior'},
+ {id:'stores',     label:'stores state',color:'#d29922', dash:null,  head:'arr',  grp:'behavior'},
+ {id:'iterates',   label:'iterates over',color:'#39c5cf',dash:'3 4', head:'arr',  grp:'behavior'},
+ {id:'visits',     label:'visits',      color:'#bc8cff', dash:'3 4', head:'arr',  grp:'behavior'},
+];
+const VERB = Object.fromEntries(VERBS.map(v=>[v.id,v]));
+const KINDS = {interface:{c:'var(--k-interface)', hex:'#8957e5', tag:'«interface»'},
+               abstract :{c:'var(--k-abstract)',  hex:'#bb6a1c', tag:'«abstract»'},
+               class    :{c:'var(--k-class)',     hex:'#1f6feb', tag:'class'},
+               client   :{c:'var(--k-client)',    hex:'#238636', tag:'client'}};
+
+/* Each pattern: roles [name, kind], edges [src, verb, dst], pos {name:[x,y]},
+   varies = GoF Table 1.2, trigger = exam problem shape, neighbor = killer contrast. */
+const PATTERNS = [
+{id:'singleton', name:'Singleton', cat:'C',
+ intent:'Ensure a class has only one instance, with a global access point.',
+ varies:'the sole instance of a class',
+ trigger:'one instance globally shared (logger, config)',
+ neighbor:'Flyweight shares MANY pooled objects; Singleton allows exactly one. Watch: global state hides coupling.',
+ roles:[['Client','client'],['Singleton','class']],
+ edges:[['Client','requests','Singleton'],['Singleton','creates','Singleton']],
+ pos:{Client:[120,180], Singleton:[430,180]}},
+
+{id:'factory-method', name:'Factory Method', cat:'C',
+ intent:'Define an interface for creating an object; let subclasses decide which class to instantiate.',
+ varies:'subclass of object that is instantiated',
+ trigger:'subclass decides which concrete class to create',
+ neighbor:'Abstract Factory makes a whole FAMILY via composition; Factory Method makes ONE product via inheritance.',
+ roles:[['Client','client'],['Creator','abstract'],['ConcreteCreator','class'],['Product','interface'],['ConcreteProduct','class']],
+ decoys:[['AbstractFactory','interface']],
+ edges:[['Client','requests','Creator'],['ConcreteCreator','extends','Creator'],
+        ['ConcreteCreator','creates','ConcreteProduct'],['ConcreteProduct','implements','Product']],
+ pos:{Client:[90,100], Creator:[360,80], ConcreteCreator:[360,270], Product:[680,80], ConcreteProduct:[680,270]}},
+
+{id:'abstract-factory', name:'Abstract Factory', cat:'C',
+ intent:'Provide an interface for creating families of related objects without specifying concrete classes.',
+ varies:'families of product objects',
+ trigger:'create families of related products (UI for Mac vs Windows)',
+ neighbor:'Factory Method = one product, inheritance. Abstract Factory = family of products, composition.',
+ roles:[['Client','client'],['AbstractFactory','interface'],['ConcreteFactory','class'],['ProductA','class'],['ProductB','class']],
+ decoys:[['Creator','abstract']],
+ edges:[['Client','requests','AbstractFactory'],['ConcreteFactory','implements','AbstractFactory'],
+        ['ConcreteFactory','creates','ProductA'],['ConcreteFactory','creates','ProductB']],
+ pos:{Client:[90,90], AbstractFactory:[380,80], ConcreteFactory:[380,260], ProductA:[700,180], ProductB:[700,330]}},
+
+{id:'builder', name:'Builder', cat:'C',
+ intent:'Separate the construction of a complex object from its representation.',
+ varies:'how a composite object gets created',
+ trigger:'construct complex object step by step; same steps, different products',
+ neighbor:'Abstract Factory returns the family in one shot; Builder assembles ONE object step-by-step via a Director.',
+ roles:[['Client','client'],['Director','class'],['Builder','interface'],['ConcreteBuilder','class'],['Product','class']],
+ edges:[['Client','requests','Director'],['Director','aggregates','Builder'],
+        ['ConcreteBuilder','implements','Builder'],['ConcreteBuilder','creates','Product']],
+ pos:{Client:[80,180], Director:[330,180], Builder:[610,80], ConcreteBuilder:[610,280], Product:[880,280]}},
+
+{id:'prototype', name:'Prototype', cat:'C',
+ intent:'Create new objects by copying a prototypical instance.',
+ varies:'class of object that is instantiated — via cloning',
+ trigger:'create new object by copying an existing one',
+ neighbor:'Abstract Factory instantiates classes; Prototype copies an INSTANCE. Watch deep vs shallow copy.',
+ roles:[['Client','client'],['Prototype','interface'],['ConcretePrototype','class']],
+ edges:[['Client','requests','Prototype'],['ConcretePrototype','implements','Prototype'],
+        ['ConcretePrototype','clones','ConcretePrototype']],
+ pos:{Client:[100,170], Prototype:[420,90], ConcretePrototype:[420,300]}},
+
+{id:'adapter', name:'Adapter', cat:'S',
+ intent:'Convert the interface of a class into another interface clients expect.',
+ varies:'interface to an object',
+ trigger:'make an incompatible interface work with the client interface',
+ neighbor:'Facade simplifies MANY classes behind one door; Adapter converts ONE mismatched class to fit.',
+ roles:[['Client','client'],['Target','interface'],['Adapter','class'],['Adaptee','class']],
+ decoys:[['SubsystemA','class']],
+ edges:[['Client','requests','Target'],['Adapter','implements','Target'],['Adapter','wraps','Adaptee']],
+ pos:{Client:[90,170], Target:[380,90], Adapter:[380,290], Adaptee:[700,290]}},
+
+{id:'bridge', name:'Bridge', cat:'S',
+ intent:'Decouple an abstraction from its implementation so the two vary independently.',
+ varies:'implementation of an object',
+ trigger:'two dimensions must each grow independently',
+ neighbor:'Adapter is retrofitted AFTER the fact; Bridge is designed in UP FRONT so both sides can grow.',
+ roles:[['Client','client'],['Abstraction','abstract'],['RefinedAbstraction','class'],['Implementor','interface'],['ConcreteImplementor','class']],
+ edges:[['Client','requests','Abstraction'],['RefinedAbstraction','extends','Abstraction'],
+        ['Abstraction','delegates','Implementor'],['ConcreteImplementor','implements','Implementor']],
+ pos:{Client:[80,90], Abstraction:[340,90], RefinedAbstraction:[340,290], Implementor:[660,90], ConcreteImplementor:[660,290]}},
+
+{id:'composite', name:'Composite', cat:'S',
+ intent:'Compose objects into tree structures; treat individual objects and compositions uniformly.',
+ varies:'structure and composition of an object',
+ trigger:'tree of part-whole hierarchies treated uniformly',
+ neighbor:'Decorator wraps ONE child to add behavior; Composite holds MANY children to build a tree.',
+ roles:[['Client','client'],['Component','interface'],['Leaf','class'],['Composite','class']],
+ edges:[['Client','requests','Component'],['Leaf','implements','Component'],
+        ['Composite','implements','Component'],['Composite','composes','Component']],
+ pos:{Client:[90,90], Component:[430,90], Leaf:[260,300], Composite:[600,300]}},
+
+{id:'decorator', name:'Decorator', cat:'S',
+ intent:'Attach additional responsibilities to an object dynamically — a flexible alternative to subclassing.',
+ varies:'responsibilities of an object, without subclassing',
+ trigger:'add behavior to an object without subclassing',
+ neighbor:'Proxy controls ACCESS with the same interface; Decorator ADDS behavior. Adapter would change the interface.',
+ roles:[['Client','client'],['Component','interface'],['ConcreteComponent','class'],['Decorator','class']],
+ decoys:[['Adaptee','class']],
+ edges:[['Client','requests','Component'],['ConcreteComponent','implements','Component'],
+        ['Decorator','implements','Component'],['Decorator','wraps','Component']],
+ pos:{Client:[90,90], Component:[430,90], ConcreteComponent:[260,300], Decorator:[600,300]}},
+
+{id:'facade', name:'Facade', cat:'S',
+ intent:'Provide a unified, higher-level interface to a subsystem.',
+ varies:'interface to a subsystem',
+ trigger:'simplify a complex subsystem behind one interface',
+ neighbor:'Adapter converts ONE class to fit a client; Facade fronts a WHOLE subsystem. Watch: god-object drift.',
+ roles:[['Client','client'],['Facade','class'],['SubsystemA','class'],['SubsystemB','class']],
+ decoys:[['Target','interface']],
+ edges:[['Client','requests','Facade'],['Facade','delegates','SubsystemA'],['Facade','delegates','SubsystemB']],
+ pos:{Client:[90,180], Facade:[400,180], SubsystemA:[700,90], SubsystemB:[700,290]}},
+
+{id:'flyweight', name:'Flyweight', cat:'S',
+ intent:'Use sharing to support large numbers of fine-grained objects efficiently.',
+ varies:'storage costs of objects — share intrinsic state',
+ trigger:'many small objects; share intrinsic state to save memory',
+ neighbor:'Singleton = exactly ONE instance; Flyweight = a POOL of shared instances keyed by intrinsic state.',
+ roles:[['Client','client'],['FlyweightFactory','class'],['Flyweight','interface'],['ConcreteFlyweight','class']],
+ edges:[['Client','requests','FlyweightFactory'],['FlyweightFactory','aggregates','ConcreteFlyweight'],
+        ['FlyweightFactory','creates','ConcreteFlyweight'],['ConcreteFlyweight','implements','Flyweight']],
+ pos:{Client:[80,180], FlyweightFactory:[360,180], Flyweight:[680,80], ConcreteFlyweight:[680,290]}},
+
+{id:'proxy', name:'Proxy', cat:'S',
+ intent:'Provide a surrogate or placeholder for another object to control access to it.',
+ varies:'how an object is accessed; its location',
+ trigger:'stand-in for another object: lazy load, access control, remote',
+ neighbor:'Decorator adds behavior; Proxy GOVERNS ACCESS. Same interface either way — read the intent.',
+ roles:[['Client','client'],['Subject','interface'],['Proxy','class'],['RealSubject','class']],
+ edges:[['Client','requests','Subject'],['Proxy','implements','Subject'],
+        ['RealSubject','implements','Subject'],['Proxy','delegates','RealSubject']],
+ pos:{Client:[90,90], Subject:[430,90], Proxy:[260,300], RealSubject:[620,300]}},
+
+{id:'chain', name:'Chain of Responsibility', cat:'B',
+ intent:'Pass a request along a chain of handlers until one handles it.',
+ varies:'object that can fulfill a request',
+ trigger:'pass request along a chain until handled',
+ neighbor:'Command reifies the REQUEST as an object; Chain routes it. Watch: a request can fall off the end.',
+ roles:[['Client','client'],['Handler','interface'],['ConcreteHandler1','class'],['ConcreteHandler2','class']],
+ edges:[['Client','requests','Handler'],['ConcreteHandler1','implements','Handler'],
+        ['ConcreteHandler2','implements','Handler'],['ConcreteHandler1','delegates','ConcreteHandler2']],
+ pos:{Client:[80,90], Handler:[420,90], ConcreteHandler1:[260,300], ConcreteHandler2:[620,300]}},
+
+{id:'command', name:'Command', cat:'B',
+ intent:'Encapsulate a request as an object — enabling queues, logs, and undo.',
+ varies:'when and how a request is fulfilled',
+ trigger:'encapsulate request as object (undo, queue, log)',
+ neighbor:'Strategy swaps an ALGORITHM now; Command reifies an ACTION to invoke later. Memento stores state, Command stores the action.',
+ roles:[['Client','client'],['Invoker','class'],['Command','interface'],['ConcreteCommand','class'],['Receiver','class']],
+ edges:[['Client','creates','ConcreteCommand'],['ConcreteCommand','implements','Command'],
+        ['Invoker','aggregates','Command'],['ConcreteCommand','delegates','Receiver']],
+ pos:{Client:[80,90], Invoker:[80,300], Command:[420,90], ConcreteCommand:[420,300], Receiver:[720,300]}},
+
+{id:'interpreter', name:'Interpreter', cat:'B',
+ intent:'Define a representation for a grammar plus an interpreter for its sentences.',
+ varies:'grammar and interpretation of a language',
+ trigger:'define grammar and interpret sentences',
+ neighbor:'Interpreter IS a Composite of expression nodes, plus an evaluate step. Watch: complex grammars explode.',
+ roles:[['Client','client'],['AbstractExpression','interface'],['TerminalExpression','class'],['NonterminalExpression','class']],
+ edges:[['Client','requests','AbstractExpression'],['TerminalExpression','implements','AbstractExpression'],
+        ['NonterminalExpression','implements','AbstractExpression'],['NonterminalExpression','composes','AbstractExpression']],
+ pos:{Client:[80,90], AbstractExpression:[430,90], TerminalExpression:[260,300], NonterminalExpression:[620,300]}},
+
+{id:'iterator', name:'Iterator', cat:'B',
+ intent:'Access elements of an aggregate sequentially without exposing its representation.',
+ varies:'how an aggregate’s elements are traversed',
+ trigger:'walk a collection without exposing its structure',
+ neighbor:'Visitor adds new OPERATIONS over elements; Iterator only SEQUENCES them.',
+ roles:[['Client','client'],['Iterator','interface'],['ConcreteIterator','class'],['Aggregate','class']],
+ edges:[['Client','requests','Iterator'],['ConcreteIterator','implements','Iterator'],
+        ['Aggregate','creates','ConcreteIterator'],['ConcreteIterator','iterates','Aggregate']],
+ pos:{Client:[80,90], Iterator:[420,90], ConcreteIterator:[420,300], Aggregate:[760,300]}},
+
+{id:'mediator', name:'Mediator', cat:'B',
+ intent:'Encapsulate how a set of objects interact; promote loose coupling.',
+ varies:'how and which objects interact with each other',
+ trigger:'coordinate complex object interactions through a hub',
+ neighbor:'Observer is ONE-WAY broadcast; Mediator brokers TWO-WAY traffic through a hub. Watch: hub grows monolithic.',
+ roles:[['Mediator','class'],['ColleagueA','class'],['ColleagueB','class'],['ColleagueC','class']],
+ edges:[['ColleagueA','notifies','Mediator'],['ColleagueB','notifies','Mediator'],['ColleagueC','notifies','Mediator'],
+        ['Mediator','delegates','ColleagueA'],['Mediator','delegates','ColleagueB'],['Mediator','delegates','ColleagueC']],
+ pos:{Mediator:[430,190], ColleagueA:[100,60], ColleagueB:[100,320], ColleagueC:[780,190]}},
+
+{id:'memento', name:'Memento', cat:'B',
+ intent:'Capture and externalize an object’s internal state without violating encapsulation.',
+ varies:'what private state is stored outside an object, and when',
+ trigger:'capture and restore object state (undo, checkpoint)',
+ neighbor:'Command stores the ACTION to replay; Memento stores the STATE to restore. Watch: mementos get heavy.',
+ roles:[['Originator','class'],['Memento','class'],['Caretaker','class']],
+ edges:[['Originator','creates','Memento'],['Memento','stores','Originator'],['Caretaker','aggregates','Memento']],
+ pos:{Originator:[110,180], Memento:[440,180], Caretaker:[760,180]}},
+
+{id:'observer', name:'Observer', cat:'B',
+ intent:'Define a one-to-many dependency so dependents are notified and updated automatically.',
+ varies:'number of objects that depend on another; how they stay in sync',
+ trigger:'notify many dependents when the subject changes',
+ neighbor:'Mediator centralizes TWO-WAY flow; Observer is ONE-WAY broadcast. Watch: update storms, leaked subscriptions.',
+ roles:[['Subject','class'],['Observer','interface'],['ConcreteObserverA','class'],['ConcreteObserverB','class']],
+ decoys:[['Mediator','class']],
+ edges:[['Subject','aggregates','Observer'],['Subject','notifies','Observer'],
+        ['ConcreteObserverA','implements','Observer'],['ConcreteObserverB','implements','Observer']],
+ pos:{Subject:[110,180], Observer:[470,180], ConcreteObserverA:[790,80], ConcreteObserverB:[790,300]}},
+
+{id:'state', name:'State', cat:'B',
+ intent:'Allow an object to alter its behavior when its internal state changes — it appears to change its class.',
+ varies:'states of an object',
+ trigger:'object behavior changes based on internal state / mode',
+ neighbor:'Strategy is CLIENT-SELECTED; State DRIVES ITS OWN TRANSITIONS — the states call setState on the context.',
+ roles:[['Client','client'],['Context','class'],['State','interface'],['ConcreteStateA','class'],['ConcreteStateB','class']],
+ decoys:[['Strategy','interface']],
+ edges:[['Client','requests','Context'],['Context','delegates','State'],
+        ['ConcreteStateA','implements','State'],['ConcreteStateB','implements','State'],
+        ['ConcreteStateA','switches','Context'],['ConcreteStateB','switches','Context']],
+ pos:{Client:[70,90], Context:[330,90], State:[650,90], ConcreteStateA:[490,310], ConcreteStateB:[800,310]}},
+
+{id:'strategy', name:'Strategy', cat:'B',
+ intent:'Define a family of algorithms, encapsulate each one, and make them interchangeable.',
+ varies:'an algorithm',
+ trigger:'swap algorithm at runtime — client picks which',
+ neighbor:'State drives its own transitions; Strategy is chosen BY THE CLIENT — note the client→strategy creates edge.',
+ roles:[['Client','client'],['Context','class'],['Strategy','interface'],['ConcreteStrategyA','class'],['ConcreteStrategyB','class']],
+ decoys:[['State','interface']],
+ edges:[['Client','requests','Context'],['Client','creates','ConcreteStrategyA'],
+        ['Context','delegates','Strategy'],
+        ['ConcreteStrategyA','implements','Strategy'],['ConcreteStrategyB','implements','Strategy']],
+ pos:{Client:[70,90], Context:[330,90], Strategy:[650,90], ConcreteStrategyA:[490,310], ConcreteStrategyB:[800,310]}},
+
+{id:'template-method', name:'Template Method', cat:'B',
+ intent:'Define the skeleton of an algorithm, deferring some steps to subclasses.',
+ varies:'steps of an algorithm',
+ trigger:'skeleton of algorithm in base class, steps overridden',
+ neighbor:'Template Method varies steps BY SUBCLASS (compile-time); Strategy swaps the WHOLE algorithm (run-time object).',
+ roles:[['Client','client'],['AbstractClass','abstract'],['ConcreteClassA','class'],['ConcreteClassB','class']],
+ decoys:[['Strategy','interface']],
+ edges:[['Client','requests','AbstractClass'],['ConcreteClassA','extends','AbstractClass'],
+        ['ConcreteClassB','extends','AbstractClass']],
+ pos:{Client:[90,90], AbstractClass:[440,90], ConcreteClassA:[280,300], ConcreteClassB:[640,300]}},
+
+{id:'visitor', name:'Visitor', cat:'B',
+ intent:'Represent an operation on the elements of an object structure without changing their classes.',
+ varies:'operations applicable to objects without changing their classes',
+ trigger:'add an operation to a class hierarchy without modifying it',
+ neighbor:'Iterator walks elements; Visitor OPERATES on them. Watch: a new element type breaks every visitor.',
+ roles:[['Client','client'],['Visitor','interface'],['ConcreteVisitor','class'],['Element','interface'],['ConcreteElementA','class']],
+ edges:[['Client','creates','ConcreteVisitor'],['ConcreteVisitor','implements','Visitor'],
+        ['ConcreteElementA','implements','Element'],['ConcreteVisitor','visits','Element']],
+ pos:{Client:[80,90], Visitor:[380,90], ConcreteVisitor:[380,300], Element:[700,90], ConcreteElementA:[700,300]}},
+];
+const PAT = Object.fromEntries(PATTERNS.map(p=>[p.id,p]));
+
+/* Real-world use cases (ex), a problem-phrased scenario for the drill (sc),
+   and the confusable-neighbor id used as a guaranteed distractor (nb). */
+const EXTRA = {
+'singleton':      {nb:'flyweight', ex:['java.lang.Runtime / app-wide Config','one Logger shared by the whole app','connection-pool manager'],
+ sc:'Every part of the app must log through the same single Logger — creating a second one would split the log file.'},
+'factory-method': {nb:'abstract-factory', ex:['Calendar.getInstance()','collection.iterator()','each dialog subclass creates its own buttons'],
+ sc:'A reporting framework defines the workflow, but each report subclass must decide whether it outputs a PdfDocument or a CsvDocument.'},
+'abstract-factory':{nb:'factory-method', ex:['cross-platform UI kits (Mac vs Windows widget families)','JDBC driver families','game themes: medieval vs sci-fi enemy+weapon sets'],
+ sc:'Switching the app theme to “dark” must swap the whole family — buttons, scrollbars, dialogs — consistently, never mixing skins.'},
+'builder':        {nb:'abstract-factory', ex:['StringBuilder / fluent SQL query builders','OkHttp Request.Builder','test-data builders'],
+ sc:'Constructing a tax report takes many optional steps; the same step sequence must yield an HTML version and a PDF version.'},
+'prototype':      {nb:'abstract-factory', ex:['spawning pre-configured game entities by cloning','document templates','JS Object.create'],
+ sc:'Spawning 1,000 enemies configured like the boss is cheaper by copying the configured instance than re-running its costly setup.'},
+'adapter':        {nb:'facade', ex:['InputStreamReader (bytes→chars)','wrapper around a legacy/vendor SDK','axios adapters over fetch vs XHR'],
+ sc:'Your code expects PaymentGateway.pay(amount), but the vendor SDK only offers makeTransaction(xml). You can change neither.'},
+'bridge':         {nb:'adapter', ex:['JDBC API over vendor drivers','SWT over native windowing','shapes × renderers (SVG/Canvas)'],
+ sc:'Shapes (circle, square) and renderers (SVG, Canvas) must both keep growing without a class for every shape×renderer combo.'},
+'composite':      {nb:'decorator', ex:['file system: folders contain files & folders','the DOM / GUI widget trees','org charts, scene graphs'],
+ sc:'A drawing app groups shapes into groups of groups; “move” and “resize” must work identically on one shape or a whole group.'},
+'decorator':      {nb:'proxy', ex:['java.io: Buffered(new FileInputStream(...))','Express/Rack middleware wrapping','coffee + milk + syrup pricing'],
+ sc:'Add gzip, then encryption, then buffering to a data stream at runtime — any combination, without a subclass per combo.'},
+'facade':         {nb:'adapter', ex:['SLF4J over logging backends','PaymentService fronting gateway+fraud+ledger','jQuery over raw DOM APIs'],
+ sc:'Placing an order touches inventory, payment, shipping and email services; callers should invoke one simple placeOrder().'},
+'flyweight':      {nb:'singleton', ex:['String interning','glyph objects shared across a million characters','instanced trees/particles in games'],
+ sc:'A text editor renders a million characters but should share the ~60 glyph objects, keeping only position per character.'},
+'proxy':          {nb:'decorator', ex:['Hibernate lazy-loading proxies','gRPC/RPC client stubs','image placeholder that loads on scroll'],
+ sc:'Product images should load only when they scroll into view; a stand-in with the same interface defers the expensive load.'},
+'chain':          {nb:'command', ex:['servlet filters / Express middleware chain','DOM event bubbling','support-ticket escalation'],
+ sc:'A support ticket should try the bot, then tier-1, then tier-2, then a manager — each link handles it or passes it on.'},
+'command':        {nb:'strategy', ex:['undo/redo stacks in editors','job/task queues','menu items & buttons bound to actions'],
+ sc:'The editor needs undo/redo and a macro recorder, so every user action must become a storable, replayable object.'},
+'interpreter':    {nb:'composite', ex:['regex engines','spreadsheet formula evaluation','rules engines / query filters'],
+ sc:'Users write filter rules like price > 100 AND brand = "X"; the app must parse and evaluate this mini-language.'},
+'iterator':       {nb:'visitor', ex:['java.util.Iterator','JS generators / for…of','database cursors & paginated APIs'],
+ sc:'Client code must loop over a playlist the same way whether it is backed by an array, a tree, or a remote page cursor.'},
+'mediator':       {nb:'observer', ex:['air-traffic control tower','chat-room server routing messages','dialog coordinating its widgets'],
+ sc:'In a booking form, changing the date resets seats, seats change price, price toggles the pay button — the widgets must not know each other.'},
+'memento':        {nb:'command', ex:['editor undo snapshots','game save states','DB transaction savepoints'],
+ sc:'A game needs save points that restore the player’s exact private internals without exposing them to the save system.'},
+'observer':       {nb:'mediator', ex:['DOM addEventListener','MVC: model notifies views','RxJS / pub-sub, spreadsheet recalc'],
+ sc:'When the stock-price model updates, every open chart, ticker and alert must refresh — without the model knowing them.'},
+'state':          {nb:'strategy', ex:['TCP connection: Closed→Listen→Established','order lifecycle: Placed→Paid→Shipped','media player Play/Pause/Stop'],
+ sc:'An order object answers cancel() differently while Placed, Paid, or Shipped — and paying moves it to Paid by itself.'},
+'strategy':       {nb:'state', ex:['Comparator passed to sort()','compression codec choice (zip/gzip/lz4)','shipping-cost calculators at checkout'],
+ sc:'At checkout the shopper picks the shipping calculator — flat, weight-based, or express — and the cart just uses whichever was chosen.'},
+'template-method':{nb:'strategy', ex:['JUnit setUp→test→tearDown lifecycle','HttpServlet.service() calling doGet/doPost','framework onLoad hooks'],
+ sc:'Every data importer runs open→parse→validate→save in that fixed order; only parse and validate differ per format.'},
+'visitor':        {nb:'iterator', ex:['compiler AST passes: type-check, codegen','linters walking syntax trees','exporting a scene graph to multiple formats'],
+ sc:'The AST classes are frozen, but you keep adding operations — type-check, optimize, pretty-print — each walking all node types.'},
+};
+PATTERNS.forEach(p=>Object.assign(p, EXTRA[p.id]||{}));
+
+/* Per-role UML members — the unique structure of each participant.
+   Notation: + public · - private · # protected · * abstract · » client usage line. */
+const MEMBERS = {
+'singleton':{ Singleton:['- static instance','- Singleton()  // private ctor','+ static instance()'], Client:['» Singleton.instance()'] },
+'factory-method':{ Creator:['+ factoryMethod()*','+ anOperation()  // uses it'], ConcreteCreator:['+ factoryMethod()'],
+  Product:['+ operation()'], ConcreteProduct:['+ operation()'], Client:['» creator.anOperation()'] },
+'abstract-factory':{ AbstractFactory:['+ createProductA()','+ createProductB()'],
+  ConcreteFactory:['+ createProductA()','+ createProductB()'], ProductA:['+ operationA()'], ProductB:['+ operationB()'],
+  Client:['» factory.createProductA()'] },
+'builder':{ Director:['- builder: Builder','+ construct()  // step order'],
+  Builder:['+ buildPartA()','+ buildPartB()','+ getResult()'], ConcreteBuilder:['+ buildPartA()','+ buildPartB()','+ getResult()'],
+  Product:['- parts[]'], Client:['» director.construct()'] },
+'prototype':{ Prototype:['+ clone()'], ConcretePrototype:['- state','+ clone()  // copies state'], Client:['» proto.clone()'] },
+'adapter':{ Target:['+ request()'], Adapter:['- adaptee: Adaptee','+ request()  // translates'],
+  Adaptee:['+ specificRequest()'], Client:['» target.request()'] },
+'bridge':{ Abstraction:['- impl: Implementor','+ operation()'], RefinedAbstraction:['+ operation()  // richer'],
+  Implementor:['+ operationImpl()'], ConcreteImplementor:['+ operationImpl()'], Client:['» abstraction.operation()'] },
+'composite':{ Component:['+ operation()','+ add(c) / remove(c)'], Leaf:['+ operation()  // does work'],
+  Composite:['- children: Component[]','+ operation()  // recurse','+ add(c)'], Client:['» component.operation()'] },
+'decorator':{ Component:['+ operation()'], ConcreteComponent:['+ operation()  // base work'],
+  Decorator:['- wrapped: Component','+ operation()  // extra + pass'], Client:['» component.operation()'] },
+'facade':{ Facade:['+ placeOrder()  // one door'], SubsystemA:['+ opA()'], SubsystemB:['+ opB()'], Client:['» facade.placeOrder()'] },
+'flyweight':{ FlyweightFactory:['- pool: Map<key,FW>','+ get(key)  // share or make'],
+  Flyweight:['+ draw(extrinsic)'], ConcreteFlyweight:['- intrinsic  // shared','+ draw(extrinsic)'],
+  Client:['- extrinsic state  // per use','» factory.get(key)'] },
+'proxy':{ Subject:['+ request()'], Proxy:['- real: RealSubject','+ request()  // guard / lazy'],
+  RealSubject:['+ request()  // the real work'], Client:['» subject.request()'] },
+'chain':{ Handler:['+ handle(req)','+ setNext(h)'], ConcreteHandler1:['- next: Handler','+ handle(req)  // or pass on'],
+  ConcreteHandler2:['- next: Handler','+ handle(req)'], Client:['» first.handle(req)'] },
+'command':{ Command:['+ execute()','+ undo()'], ConcreteCommand:['- receiver','- args  // bound request','+ execute()'],
+  Invoker:['- history: Command[]','+ run(cmd)  // queue / log'], Receiver:['+ action()'], Client:['» new ConcreteCommand(rcvr)'] },
+'interpreter':{ AbstractExpression:['+ interpret(ctx)'], TerminalExpression:['+ interpret(ctx)  // leaf'],
+  NonterminalExpression:['- children: Expr[]','+ interpret(ctx)  // combine'], Client:['» ast.interpret(ctx)'] },
+'iterator':{ Iterator:['+ next()','+ hasNext()'], ConcreteIterator:['- pos  // traversal state','+ next() / hasNext()'],
+  Aggregate:['- items  // hidden rep','+ createIterator()'], Client:['» while(it.hasNext()) …'] },
+'mediator':{ Mediator:['- colleagues','+ notify(sender, event)'], ColleagueA:['- m: Mediator','+ react()'],
+  ColleagueB:['- m: Mediator','+ react()'], ColleagueC:['- m: Mediator','+ react()'] },
+'memento':{ Originator:['- state  // private!','+ save(): Memento','+ restore(m)'],
+  Memento:['- state  (opaque)','+ getState()  // originator-only'], Caretaker:['- history: Memento[]  // never reads'] },
+'observer':{ Subject:['- observers: Observer[]','+ attach(o) / detach(o)','+ notify()  // one-way'],
+  Observer:['+ update()'], ConcreteObserverA:['+ update()  // pull state'], ConcreteObserverB:['+ update()'] },
+'state':{ Context:['- state: State','+ request()  // delegates','+ setState(s)  // states call'],
+  State:['+ handle(ctx)'], ConcreteStateA:['+ handle(ctx)  // work, → B'], ConcreteStateB:['+ handle(ctx)  // work, → A'],
+  Client:['» ctx.request()  // never picks mode'] },
+'strategy':{ Context:['- strategy: Strategy','+ setStrategy(s)  // client calls','+ execute()'],
+  Strategy:['+ algorithm()'], ConcreteStrategyA:['+ algorithm()  // variant A'], ConcreteStrategyB:['+ algorithm()  // variant B'],
+  Client:['» ctx.setStrategy(new A())  // picks!'] },
+'template-method':{ AbstractClass:['+ templateMethod()  // fixed flow','# step1()*','# step2()*'],
+  ConcreteClassA:['# step1() / step2()'], ConcreteClassB:['# step1() / step2()'], Client:['» obj.templateMethod()'] },
+'visitor':{ Visitor:['+ visitA(e)','+ visitB(e)  // op per element'], ConcreteVisitor:['+ visitA(e) / visitB(e)'],
+  Element:['+ accept(v)'], ConcreteElementA:['+ accept(v) { v.visitA(this) }'], Client:['» element.accept(visitor)'] },
+};
+const KIND_DEFAULT_MEMBERS = { interface:['+ operation()'], abstract:['+ operation()*'], class:['+ operation()'], client:['» uses the interface'] };
+function roleMembers(role){
+  // current task's pattern first, then any pattern that defines this role, then kind default
+  const pid=curTask&&curTask.patternId;
+  if(pid && MEMBERS[pid] && MEMBERS[pid][role]) return MEMBERS[pid][role];
+  for(const p of PATTERNS){ if(MEMBERS[p.id] && MEMBERS[p.id][role]) return MEMBERS[p.id][role]; }
+  return null;
+}
+
+/* Curated fix tasks — each seeds a sabotaged graph; target = canonical pattern spec. */
+const FIXTASKS = [
+{id:'fx-state', pattern:'state', title:'State wearing Strategy’s clothes',
+ brief:'This graph claims to be STATE, but the client is picking the mode and the states never transition themselves. Rewire it so the states drive their own transitions.',
+ nodes:['Client','Context','State','ConcreteStateA','ConcreteStateB'],
+ edges:[['Client','requests','Context'],['Client','creates','ConcreteStateA'],
+        ['Context','delegates','State'],
+        ['ConcreteStateA','implements','State'],['ConcreteStateB','implements','State']]},
+{id:'fx-strategy', pattern:'strategy', title:'Strategy hijacked into State',
+ brief:'This graph claims to be STRATEGY, but the algorithms are swapping themselves like states. Restore client selection.',
+ nodes:['Client','Context','Strategy','ConcreteStrategyA','ConcreteStrategyB'],
+ edges:[['Client','requests','Context'],['Context','delegates','Strategy'],
+        ['ConcreteStrategyA','implements','Strategy'],['ConcreteStrategyB','implements','Strategy'],
+        ['ConcreteStrategyA','switches','Context']]},
+{id:'fx-decorator', pattern:'decorator', title:'Decorator that is secretly an Adapter',
+ brief:'This wrapper exposes a DIFFERENT interface than the thing it wraps — that’s Adapter. Make it a true Decorator: same interface in, same interface out.',
+ nodes:['Client','Component','ConcreteComponent','Decorator','Target'],
+ edges:[['Client','requests','Component'],['ConcreteComponent','implements','Component'],
+        ['Decorator','implements','Target'],['Decorator','wraps','ConcreteComponent']]},
+{id:'fx-facade', pattern:'facade', title:'Facade doing Adapter’s job',
+ brief:'This “Facade” implements a foreign Target interface and wraps a single class — that’s an Adapter. Rebuild the real Facade: one plain entry point delegating across the subsystem.',
+ nodes:['Client','Facade','SubsystemA','SubsystemB','Target'],
+ edges:[['Client','requests','Target'],['Facade','implements','Target'],['Facade','wraps','SubsystemA']]},
+{id:'fx-factory', pattern:'factory-method', title:'Factory Method inflated into Abstract Factory',
+ brief:'One creator is pumping out a whole product family with no inheritance hook — that’s Abstract Factory shape. Restore Factory Method: subclass decides, ONE product.',
+ nodes:['Client','Creator','ConcreteCreator','Product','ConcreteProduct','AbstractFactory'],
+ edges:[['Client','requests','Creator'],['ConcreteCreator','implements','AbstractFactory'],
+        ['ConcreteCreator','creates','ConcreteProduct'],['ConcreteCreator','creates','Product']]},
+{id:'fx-observer', pattern:'observer', title:'Observer smuggled through a Mediator',
+ brief:'The observers are talking BACK and the subject is routing traffic — that’s a Mediator hub. Restore one-way broadcast.',
+ nodes:['Subject','Observer','ConcreteObserverA','ConcreteObserverB'],
+ edges:[['ConcreteObserverA','notifies','Subject'],['ConcreteObserverB','notifies','Subject'],
+        ['Subject','delegates','ConcreteObserverA'],['Subject','delegates','ConcreteObserverB'],
+        ['ConcreteObserverA','implements','Observer'],['ConcreteObserverB','implements','Observer']]},
+];
+
+/* =====================================================================
+   STATE
+   ===================================================================== */
+let mode='play';                    // play | build | fix
+let curTask=null;                   // {kind:'build'|'fix', patternId, fixId?}
+let nodes=[];                       // {id, role, name, kind, x, y, w, h}
+let edges=[];                       // {id, src, dst, verb}  (node ids)
+let nid=1, eid=1;
+let sel=null;                       // {type:'node'|'edge', id}
+let view={x:0,y:0,k:1};
+const LSKEY='neuralos-pattern-playground-v1';
+let progress=JSON.parse(localStorage.getItem(LSKEY)||'{}');
+
+const $=q=>document.querySelector(q);
+const svg=$('#svg'), world=$('#world'), edgesG=$('#edgesG'), nodesG=$('#nodesG'), ghostG=$('#ghostG');
+
+/* ---------- markers ---------- */
+(function makeMarkers(){
+  const defs=$('#defs');
+  for(const v of VERBS){
+    let m='';
+    if(v.head==='arr')  m=`<marker id="mk-${v.id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${v.color}"/></marker>`;
+    if(v.head==='tri')  m=`<marker id="mk-${v.id}" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path d="M1,1 L11,6 L1,11 z" fill="#0d1117" stroke="${v.color}" stroke-width="1.4"/></marker>`;
+    if(v.head==='dia')  m=`<marker id="mk-${v.id}" viewBox="0 0 14 10" refX="1" refY="5" markerWidth="13" markerHeight="10" orient="auto"><path d="M1,5 L7,1 L13,5 L7,9 z" fill="#0d1117" stroke="${v.color}" stroke-width="1.3"/></marker>`;
+    if(v.head==='diaF') m=`<marker id="mk-${v.id}" viewBox="0 0 14 10" refX="1" refY="5" markerWidth="13" markerHeight="10" orient="auto"><path d="M1,5 L7,1 L13,5 L7,9 z" fill="${v.color}"/></marker>`;
+    defs.insertAdjacentHTML('beforeend', m);
+  }
+})();
+
+/* =====================================================================
+   GRAPH OPS
+   ===================================================================== */
+function nodeDims(members){
+  const longest=Math.max(0,...members.map(m=>m.length));
+  const w=Math.min(250, Math.max(176, longest*6.1+26));
+  const h=50+members.length*15+8;
+  return [w,h];
+}
+function addNode(role, kind, x, y, name){
+  const members=roleMembers(role)||KIND_DEFAULT_MEMBERS[kind]||[];
+  const [w,h]=nodeDims(members);
+  const n={id:'n'+(nid++), role, name:name||role, kind, x, y, w, h, members};
+  nodes.push(n); render(); return n;
+}
+function removeNode(id){
+  edges=edges.filter(e=>e.src!==id && e.dst!==id);
+  nodes=nodes.filter(n=>n.id!==id);
+  if(sel && sel.type==='node' && sel.id===id) sel=null;
+  render();
+}
+function addEdge(src,dst,verb){
+  if(edges.some(e=>e.src===src&&e.dst===dst&&e.verb===verb)) return null;
+  const e={id:'e'+(eid++), src, dst, verb}; edges.push(e); render(); return e;
+}
+function removeEdge(id){ edges=edges.filter(e=>e.id!==id); if(sel&&sel.type==='edge'&&sel.id===id)sel=null; render(); }
+function nodeById(id){ return nodes.find(n=>n.id===id); }
+function clearGraph(){ nodes=[]; edges=[]; sel=null; nid=1; eid=1; render(); }
+
+/* Load a graph from a spec-ish {roles:[[name,kind]], edges, pos} */
+function loadGraph(roleList, edgeList, posMap, extraRoles){
+  clearGraph();
+  const all=[...roleList, ...(extraRoles||[])];
+  const map={};
+  all.forEach(([r,k],i)=>{
+    const p=(posMap&&posMap[r])||[120+(i%3)*300, 90+Math.floor(i/3)*160];
+    map[r]=addNode(r,k,p[0]*1.22,p[1]*1.15).id;   // stretch stock layouts for the wider UML boxes
+  });
+  (edgeList||[]).forEach(([s,v,d])=>{ if(map[s]&&map[d]) addEdge(map[s],map[d],v); });
+  fitView();
+}
+
+/* =====================================================================
+   RENDER
+   ===================================================================== */
+function portPos(n, out){ return out ? [n.x+n.w, n.y+38] : [n.x, n.y+38]; }
+function anchor(n, which){
+  if(which==='out') return [n.x+n.w, n.y+38];
+  if(which==='in')  return [n.x, n.y+38];
+  if(which==='top') return [n.x+n.w/2, n.y];
+  return [n.x+n.w/2, n.y+n.h];               // 'bot'
+}
+const INHERIT=v=>v==='implements'||v==='extends';
+function parOff(e){ // separate parallel edges between the same node pair
+  const sib=edges.filter(x=>x.src===e.src&&x.dst===e.dst);
+  if(sib.length<2) return 0;
+  const i=sib.findIndex(x=>x.id===e.id);
+  return (i-(sib.length-1)/2)*52;
+}
+function edgePath(e){
+  const a=nodeById(e.src), b=nodeById(e.dst);
+  if(!a||!b) return '';
+  if(a===b){ // self-loop
+    const [x,y]=anchor(a,'out');
+    const [x2,y2]=anchor(a,'in');
+    return `M ${x} ${y} C ${x+90} ${y-95}, ${x2-90} ${y2-95}, ${x2} ${y2}`;
+  }
+  const off=parOff(e);
+  if(INHERIT(e.verb)){ // UML: subclass rises out of its top into the parent's bottom edge
+    const [x1,y1]=anchor(a,'top'), [x2,y2]=anchor(b,'bot');
+    const dy=Math.max(50, Math.abs(y2-y1)/2);
+    return `M ${x1} ${y1} C ${x1+off} ${y1-dy}, ${x2+off} ${y2+dy}, ${x2} ${y2}`;
+  }
+  const [x1,y1]=anchor(a,'out'), [x2,y2]=anchor(b,'in');
+  const dx=Math.max(60, Math.abs(x2-x1)/2);
+  return `M ${x1} ${y1} C ${x1+dx} ${y1+off}, ${x2-dx} ${y2+off}, ${x2} ${y2}`;
+}
+function edgeMid(e){
+  const a=nodeById(e.src), b=nodeById(e.dst);
+  if(a===b){ const [x,y]=anchor(a,'out'); return [a.x+a.w/2, y-78]; }
+  if(INHERIT(e.verb)){
+    const [x1,y1]=anchor(a,'top'), [x2,y2]=anchor(b,'bot');
+    return [(x1+x2)/2+parOff(e)*0.75, (y1+y2)/2];
+  }
+  const [x1,y1]=anchor(a,'out'), [x2,y2]=anchor(b,'in');
+  return [(x1+x2)/2, (y1+y2)/2-9+parOff(e)*0.75];
+}
+
+function render(){
+  world.setAttribute('transform',`translate(${view.x},${view.y}) scale(${view.k})`);
+  // edges
+  edgesG.innerHTML='';
+  for(const e of edges){
+    const v=VERB[e.verb]; const d=edgePath(e); if(!d) continue;
+    const selCls=(sel&&sel.type==='edge'&&sel.id===e.id);
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    const isDia=v.head==='dia'||v.head==='diaF';
+    g.innerHTML=`
+      <path d="${d}" fill="none" stroke="${v.color}" stroke-width="${selCls?3:1.8}"
+        ${v.dash?`stroke-dasharray="${v.dash}"`:''}
+        ${isDia?`marker-start="url(#mk-${e.verb})"`:`marker-end="url(#mk-${e.verb})"`} ${isDia?`marker-end="url(#mk-delegates)"`:''} opacity="${selCls?1:.92}"/>
+      <path class="edgeHit" d="${d}" data-eid="${e.id}"/>`;
+    const [mx,my]=edgeMid(e);
+    const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('x',mx); t.setAttribute('y',my); t.setAttribute('text-anchor','middle');
+    t.setAttribute('class','edgeLbl'); t.setAttribute('fill',v.color); t.textContent=v.label;
+    g.appendChild(t);
+    edgesG.appendChild(g);
+  }
+  // nodes
+  nodesG.innerHTML='';
+  for(const n of nodes){
+    const k=KINDS[n.kind];
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.setAttribute('class','node'+(sel&&sel.type==='node'&&sel.id===n.id?' selected':''));
+    g.setAttribute('transform',`translate(${n.x},${n.y})`);
+    g.dataset.nid=n.id;
+    const stereo=n.kind==='interface'||n.kind==='abstract';
+    const mems=(n.members||[]).map((m,i)=>{
+      const use=m.startsWith('»');
+      return `<text class="mem${use?' use':''}" x="10" y="${60+i*15}">${m.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</text>`;
+    }).join('');
+    g.innerHTML=`
+      <rect class="body" width="${n.w}" height="${n.h}" rx="8"/>
+      <path d="M0,8 a8,8 0 0 1 8,-8 h${n.w-16} a8,8 0 0 1 8,8 v14 h-${n.w} z" fill="${k.hex}"/>
+      <text class="title" x="10" y="16">${n.name}</text>
+      ${stereo?`<text class="stereo" x="10" y="36">${k.tag}</text>`:`<text class="kindtag" x="10" y="36">${k.tag}</text>`}
+      ${n.members&&n.members.length?`<line x1="6" y1="44" x2="${n.w-6}" y2="44" stroke="var(--line)" stroke-width="1"/>`:''}
+      ${mems}
+      <circle class="port in"  cx="0"      cy="38" r="5.5" data-nid="${n.id}" data-dir="in"/>
+      <circle class="port out" cx="${n.w}" cy="38" r="5.5" data-nid="${n.id}" data-dir="out" data-anchor="out"/>
+      ${n.kind==='interface'||n.kind==='abstract'
+        ?`<circle class="port bot" cx="${n.w/2}" cy="${n.h}" r="5.5" data-nid="${n.id}" data-dir="in" title="inheritance lands here"/>`
+        :`<circle class="port topp" cx="${n.w/2}" cy="0" r="5.5" data-nid="${n.id}" data-dir="out" data-anchor="top"/>`}`;
+    nodesG.appendChild(g);
+  }
+  renderPaletteUsed();
+  genCode();
+  if(typeof renderSeq==='function' && window.__booted) renderSeq();
+}
+
+/* =====================================================================
+   INTERACTION — pan/zoom, node drag, wire drag, selection
+   ===================================================================== */
+function toWorld(cx,cy){ const r=svg.getBoundingClientRect(); return [(cx-r.left-view.x)/view.k, (cy-r.top-view.y)/view.k]; }
+let drag=null; // {type:'node'|'pan'|'wire', ...}
+let lastTap=null; // {id, t} — manual double-tap detection for rename
+
+svg.addEventListener('pointerdown', ev=>{
+  hidePopover();
+  const portEl=ev.target.closest('.port');
+  const nodeEl=ev.target.closest('.node');
+  const hitEl =ev.target.closest('.edgeHit');
+  if(portEl && portEl.dataset.dir==='out'){
+    drag={type:'wire', from:portEl.dataset.nid, anchor:portEl.dataset.anchor||'out'};
+    svg.setPointerCapture(ev.pointerId); return;
+  }
+  if(hitEl){ sel={type:'edge', id:hitEl.dataset.eid}; render(); showEdgePopover(hitEl.dataset.eid, ev.clientX, ev.clientY); return; }
+  if(nodeEl){
+    const n=nodeById(nodeEl.dataset.nid); sel={type:'node', id:n.id};
+    const now=performance.now();
+    if(mode==='play' && lastTap && lastTap.id===n.id && now-lastTap.t<450){
+      ev.preventDefault();   // keep the mousedown default from stealing focus off the editor
+      lastTap=null; render();
+      const [,wy]=toWorld(ev.clientX,ev.clientY);
+      if(wy-n.y>44) startMembersEdit(n); else startRename(n);  // below the separator = methods
+      return;
+    }
+    lastTap={id:n.id, t:now};
+    const [wx,wy]=toWorld(ev.clientX,ev.clientY);
+    drag={type:'node', id:n.id, ox:wx-n.x, oy:wy-n.y}; render(); svg.setPointerCapture(ev.pointerId); return;
+  }
+  sel=null; render();
+  drag={type:'pan', sx:ev.clientX, sy:ev.clientY, vx:view.x, vy:view.y};
+  svg.classList.add('panning'); svg.setPointerCapture(ev.pointerId);
+});
+svg.addEventListener('pointermove', ev=>{
+  if(!drag) return;
+  if(drag.type==='pan'){ view.x=drag.vx+(ev.clientX-drag.sx); view.y=drag.vy+(ev.clientY-drag.sy); world.setAttribute('transform',`translate(${view.x},${view.y}) scale(${view.k})`); return; }
+  if(drag.type==='node'){ const n=nodeById(drag.id); const [wx,wy]=toWorld(ev.clientX,ev.clientY); n.x=wx-drag.ox; n.y=wy-drag.oy; render(); return; }
+  if(drag.type==='wire'){
+    const a=nodeById(drag.from); const [x1,y1]=anchor(a,drag.anchor||'out'); const [x2,y2]=toWorld(ev.clientX,ev.clientY);
+    const dx=Math.max(60,Math.abs(x2-x1)/2);
+    ghostG.innerHTML=`<path class="ghost" d="M ${x1} ${y1} C ${x1+dx} ${y1}, ${x2-dx} ${y2}, ${x2} ${y2}" fill="none" stroke="var(--pick)" stroke-width="2"/>`;
+    // highlight hover target
+    document.querySelectorAll('.node rect.body').forEach(r=>r.style.stroke='');
+    const el=document.elementFromPoint(ev.clientX,ev.clientY);
+    const tgt=el && el.closest && el.closest('.node');
+    if(tgt) tgt.querySelector('rect.body').style.stroke='var(--pick)';
+  }
+});
+svg.addEventListener('pointerup', ev=>{
+  if(drag && drag.type==='wire'){
+    ghostG.innerHTML='';
+    const el=document.elementFromPoint(ev.clientX,ev.clientY);
+    const tgt=el && el.closest && el.closest('.node');
+    if(tgt){ showVerbPopover(drag.from, tgt.dataset.nid, ev.clientX, ev.clientY); }
+    document.querySelectorAll('.node rect.body').forEach(r=>r.style.stroke='');
+  }
+  svg.classList.remove('panning'); drag=null;
+});
+svg.addEventListener('wheel', ev=>{
+  ev.preventDefault();
+  const f=ev.deltaY<0?1.12:0.89;
+  const r=svg.getBoundingClientRect(), mx=ev.clientX-r.left, my=ev.clientY-r.top;
+  view.x=mx-(mx-view.x)*f; view.y=my-(my-view.y)*f; view.k*=f;
+  world.setAttribute('transform',`translate(${view.x},${view.y}) scale(${view.k})`);
+},{passive:false});
+/* Inline rename editor. No native dblclick (render() rebuilds the SVG between
+   clicks, so the browser never synthesizes one) and no prompt() dialog —
+   double-tap is detected manually in pointerdown, editing happens in an
+   overlaid input. */
+let renameEl=null;
+function startRename(n){
+  if(!n || renameEl) return;
+  const inp=document.createElement('input');
+  inp.id='renameBox'; inp.value=n.name;
+  inp.style.left=(view.x+n.x*view.k)+'px';
+  inp.style.top =(view.y+n.y*view.k)+'px';
+  inp.style.width=Math.max(120, n.w*view.k-8)+'px';
+  $('#canvasWrap').appendChild(inp); renameEl=inp;
+  setTimeout(()=>{ inp.focus(); inp.select(); }, 0);
+  const done=commit=>{
+    if(!renameEl) return;
+    const v=inp.value.trim();
+    renameEl=null; inp.remove();
+    if(commit && v && v!==n.name){
+      n.name=v; n.role=v;
+      if(!n.customMembers) n.members=roleMembers(n.role)||KIND_DEFAULT_MEMBERS[n.kind]||[];
+      const d=nodeDims(n.members); n.w=d[0]; n.h=d[1];
+    }
+    render();
+  };
+  inp.addEventListener('keydown',ev=>{ ev.stopPropagation();
+    if(ev.key==='Enter') done(true);
+    else if(ev.key==='Escape') done(false); });
+  inp.addEventListener('blur',()=>done(true));
+  inp.addEventListener('pointerdown',ev=>ev.stopPropagation());
+}
+/* Double-tap below the separator: edit the member compartment — one member per
+   line (+ public · - private · # protected · * abstract · » usage note). */
+function startMembersEdit(n){
+  if(!n || renameEl) return;
+  const ta=document.createElement('textarea');
+  ta.id='memberBox'; ta.value=(n.members||[]).join('\n');
+  ta.spellcheck=false;
+  ta.style.left=(view.x+n.x*view.k)+'px';
+  ta.style.top =(view.y+(n.y+44)*view.k)+'px';
+  ta.style.width=Math.max(160, n.w*view.k-4)+'px';
+  ta.style.height=Math.max(52, ((n.members||[]).length*15+26)*view.k)+'px';
+  ta.title='one member per line · Ctrl+Enter or click away = save · Esc = cancel';
+  $('#canvasWrap').appendChild(ta); renameEl=ta;   // shared single-editor guard
+  setTimeout(()=>{ ta.focus(); }, 0);
+  const done=commit=>{
+    if(renameEl!==ta) return;
+    renameEl=null; ta.remove();
+    if(commit){
+      n.members=ta.value.split('\n').map(s=>s.trim()).filter(Boolean);
+      n.customMembers=true;
+      const d=nodeDims(n.members); n.w=d[0]; n.h=d[1];
+    }
+    render();
+  };
+  ta.addEventListener('keydown',ev=>{ ev.stopPropagation();
+    if(ev.key==='Enter'&&(ev.ctrlKey||ev.metaKey)) done(true);
+    else if(ev.key==='Escape') done(false); });
+  ta.addEventListener('blur',()=>done(true));
+  ta.addEventListener('pointerdown',ev=>ev.stopPropagation());
+}
+// native dblclick as a fallback path (retargeted to the svg root by pointer
+// capture when it does fire) — startRename guards against double-open
+svg.addEventListener('dblclick', ev=>{
+  if(mode!=='play') return;
+  let el=ev.target.closest && ev.target.closest('.node');
+  if(!el){ const hit=document.elementFromPoint(ev.clientX,ev.clientY); el=hit&&hit.closest&&hit.closest('.node'); }
+  if(!el) return;
+  const n=nodeById(el.dataset.nid);
+  const [,wy]=toWorld(ev.clientX,ev.clientY);
+  if(wy-n.y>44) startMembersEdit(n); else startRename(n);
+});
+document.addEventListener('keydown', ev=>{
+  if(ev.key!=='Delete'&&ev.key!=='Backspace') return;
+  if(document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  if(sel){ ev.preventDefault(); if(sel.type==='node') removeNode(sel.id); else removeEdge(sel.id); }
+});
+$('#zin').onclick=()=>{view.k*=1.2; render();};
+$('#zout').onclick=()=>{view.k/=1.2; render();};
+$('#zfit').onclick=fitView;
+function fitView(){
+  if(!nodes.length){ view={x:40,y:40,k:1}; render(); return; }
+  const xs=nodes.map(n=>n.x), ys=nodes.map(n=>n.y);
+  const minX=Math.min(...xs)-60, minY=Math.min(...ys)-100,
+        maxX=Math.max(...nodes.map(n=>n.x+n.w))+60, maxY=Math.max(...nodes.map(n=>n.y+n.h))+80;
+  const r=svg.getBoundingClientRect();
+  const k=Math.min(1.25, r.width/(maxX-minX), (r.height-40)/(maxY-minY));
+  view={k, x:(r.width-(maxX-minX)*k)/2-minX*k, y:(r.height-(maxY-minY)*k)/2-minY*k};
+  render();
+}
+
+/* =====================================================================
+   POPOVERS — verb pick / edge edit
+   ===================================================================== */
+const pop=$('#popover');
+function hidePopover(){ pop.style.display='none'; }
+function place(x,y){ pop.style.display='block'; const pw=pop.offsetWidth, ph=pop.offsetHeight;
+  pop.style.left=Math.min(x, innerWidth-pw-10)+'px'; pop.style.top=Math.min(y, innerHeight-ph-10)+'px'; }
+function verbListHTML(){
+  let h='', g='';
+  for(const v of VERBS){
+    if(v.grp!==g){ g=v.grp; h+=`<div class="grp">${g}</div>`; }
+    h+=`<div class="vp" data-v="${v.id}"><span class="sw" style="background:${v.color}"></span>${v.label}</div>`;
+  }
+  return h;
+}
+function showVerbPopover(src,dst,x,y){
+  pop.innerHTML=verbListHTML();
+  pop.querySelectorAll('.vp').forEach(el=>el.onclick=()=>{ addEdge(src,dst,el.dataset.v); hidePopover(); });
+  place(x,y);
+}
+function showEdgePopover(edgeId,x,y){
+  const e=edges.find(e=>e.id===edgeId); if(!e) return;
+  pop.innerHTML=verbListHTML()+`<hr>
+    <div class="vp act2" data-a="flip">⇄ &nbsp;flip direction</div>
+    <div class="vp act" data-a="del">✕ &nbsp;delete edge</div>`;
+  pop.querySelectorAll('.vp[data-v]').forEach(el=>el.onclick=()=>{ e.verb=el.dataset.v; hidePopover(); render(); });
+  pop.querySelector('[data-a=flip]').onclick=()=>{ const t=e.src; e.src=e.dst; e.dst=t; hidePopover(); render(); };
+  pop.querySelector('[data-a=del]').onclick=()=>{ removeEdge(edgeId); hidePopover(); };
+  place(x,y);
+}
+document.addEventListener('pointerdown',ev=>{ if(!pop.contains(ev.target)&&!ev.target.closest('.edgeHit')) hidePopover(); },true);
+
+/* =====================================================================
+   PALETTE
+   ===================================================================== */
+function buildPalette(){
+  const el=$('#palette'); el.innerHTML='';
+  if(mode==='quiz'){
+    el.innerHTML='<h3>Scenario drill</h3><div style="font-size:12px;color:var(--muted)">Read the scenario on the right, name the pattern. On answer, the canonical graph loads here for visual reinforcement.<br><br>The confusable neighbor is always among the choices — that’s the trap being trained.</div>';
+    return;
+  }
+  if(mode==='play'){
+    el.innerHTML='<h3>Generic roles</h3>';
+    [['Client','client'],['Interface','interface'],['AbstractClass','abstract'],['Class','class']]
+      .forEach(([r,k])=>el.appendChild(palItem(r,k,false,true)));
+    el.insertAdjacentHTML('beforeend','<h3>Tip</h3><div style="font-size:12px;color:var(--muted)">Add nodes, double-click to rename, wire them with the 14 relationship verbs. Use “Load reference…” above to study any canonical pattern.</div>');
+    return;
+  }
+  const p=curTask?PAT[curTask.patternId]:null;
+  if(!p){ el.innerHTML='<h3>Pick a task →</h3>'; return; }
+  el.innerHTML='<h3>Participants</h3>';
+  p.roles.forEach(([r,k])=>el.appendChild(palItem(r,k,false,false)));
+  if(p.decoys&&p.decoys.length){
+    el.insertAdjacentHTML('beforeend','<h3>…tempting extras</h3>');
+    p.decoys.forEach(([r,k])=>el.appendChild(palItem(r,k,true,false)));
+  }
+}
+function palItem(role,kind,isDecoy,multi){
+  const d=document.createElement('div');
+  d.className='pal-item'+(isDecoy?' decoy':''); d.dataset.role=role; d.dataset.multi=multi?'1':'';
+  d.innerHTML=`<span class="dot" style="background:${KINDS[kind].hex}"></span>${role}<span class="st">${KINDS[kind].tag.replace(/[«»]/g,'')}</span>`;
+  d.onclick=()=>{
+    if(!multi && nodes.some(n=>n.role===role)) return;
+    const r=svg.getBoundingClientRect();
+    const [wx,wy]=toWorld(r.left+r.width*0.42+((nid*37)%120), r.top+r.height*0.35+((nid*53)%140));
+    addNode(role,kind,wx,wy, multi? role+(nodes.filter(n=>n.role===role).length? ' '+(nodes.filter(n=>n.role===role).length+1):'') : role);
+  };
+  return d;
+}
+function renderPaletteUsed(){
+  document.querySelectorAll('.pal-item').forEach(el=>{
+    if(el.dataset.multi) return;
+    el.classList.toggle('used', nodes.some(n=>n.role===el.dataset.role));
+  });
+}
+
+/* =====================================================================
+   SIDE PANEL — tasks, brief, findings
+   ===================================================================== */
+function famName(c){ return c==='C'?'Creational':c==='S'?'Structural':'Behavioral'; }
+function buildSide(){
+  const s=$('#side'); s.innerHTML='';
+  if(mode==='play'){
+    const p=curTask?PAT[curTask.patternId]:null;
+    s.innerHTML=`<h2>Playground</h2>
+      <div id="brief">Free canvas. Wire anything.<div class="muted">Load a canonical pattern from the header dropdown to study its shape — the edge set <i>is</i> the pattern. Then try rebuilding it from memory in <b>Build tasks</b>.</div></div>
+      ${p?patternBriefHTML(p):''}
+      <div id="findings"></div><div id="successBox"></div>`;
+    return;
+  }
+  if(mode==='build'){
+    s.innerHTML='<h2>Build from zero</h2><div style="font-size:12px;color:var(--muted)">Wire the canonical structure. Decoy roles are from the confusable neighbor — using them is the classic mistake.</div>';
+    ['C','S','B'].forEach(cat=>{
+      s.insertAdjacentHTML('beforeend',`<h3 style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:4px">${famName(cat)}</h3>`);
+      const list=document.createElement('div'); list.className='tasklist';
+      PATTERNS.filter(p=>p.cat===cat).forEach(p=>{
+        const done=progress['build:'+p.id];
+        const row=document.createElement('div');
+        row.className='task-row'+(curTask&&curTask.kind==='build'&&curTask.patternId===p.id?' active':'');
+        row.innerHTML=`<span class="done">${done?'✓':''}</span>${p.name}`;
+        row.onclick=()=>startBuild(p.id);
+        list.appendChild(row);
+      });
+      s.appendChild(list);
+    });
+    s.insertAdjacentHTML('beforeend','<div id="taskDetail"></div><div id="findings"></div><div id="successBox"></div>');
+    if(curTask&&curTask.kind==='build') $('#taskDetail').innerHTML=patternBriefHTML(PAT[curTask.patternId],true);
+  }
+  if(mode==='quiz'){
+    s.innerHTML='<h2>Scenario → pattern</h2><div id="quizWrap"></div>';
+    renderQuiz();
+    return;
+  }
+  if(mode==='fix'){
+    s.innerHTML='<h2>Fix the sabotage</h2><div style="font-size:12px;color:var(--muted)">Each graph is a pattern wired wrong — usually as its confusable neighbor. Diagnose and repair.</div>';
+    const list=document.createElement('div'); list.className='tasklist';
+    FIXTASKS.forEach(t=>{
+      const done=progress['fix:'+t.id];
+      const row=document.createElement('div');
+      row.className='task-row'+(curTask&&curTask.fixId===t.id?' active':'');
+      row.innerHTML=`<span class="done">${done?'✓':''}</span>${t.title}<span class="fam">${PAT[t.pattern].name}</span>`;
+      row.onclick=()=>startFix(t.id);
+      list.appendChild(row);
+    });
+    s.appendChild(list);
+    const rb=document.createElement('button'); rb.textContent='🎲 Random sabotage'; rb.style.marginTop='6px';
+    rb.onclick=randomSabotage; s.appendChild(rb);
+    s.insertAdjacentHTML('beforeend','<div id="taskDetail"></div><div id="findings"></div><div id="successBox"></div>');
+    if(curTask&&curTask.kind==='fix'){
+      const t=FIXTASKS.find(x=>x.id===curTask.fixId);
+      $('#taskDetail').innerHTML = (t?`<div id="brief" style="margin-top:8px"><b>${t.title}</b><div class="muted">${t.brief}</div></div>`:'') + patternBriefHTML(PAT[curTask.patternId],true);
+    }
+  }
+}
+function patternBriefHTML(p, hideNeighbor){
+  return `<div id="brief" style="margin-top:8px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <b>${p.name}</b><span class="catTag cat-${p.cat}">${famName(p.cat)}</span></div>
+    ${p.intent}
+    <div class="muted"><b style="color:var(--accent)">Trigger:</b> ${p.trigger}</div>
+    <div class="muted"><b style="color:var(--ok)">Lets you vary:</b> ${p.varies}</div>
+    ${p.ex?`<div class="muted"><b style="color:#d2a8ff">Real uses:</b> ${p.ex.join(' · ')}</div>`:''}
+    ${hideNeighbor?'' :`<div class="muted"><b style="color:var(--pick)">≠ neighbor:</b> ${p.neighbor}</div>`}
+  </div>`;
+}
+
+/* =====================================================================
+   TASK FLOW
+   ===================================================================== */
+function startBuild(pid){
+  curTask={kind:'build', patternId:pid};
+  clearGraph(); buildPalette(); buildSide(); fitView();
+}
+function startFix(fid){
+  const t=FIXTASKS.find(x=>x.id===fid); if(!t) return;
+  curTask={kind:'fix', patternId:t.pattern, fixId:fid};
+  const p=PAT[t.pattern];
+  const kindOf=r=>{ const hit=[...p.roles, ...(p.decoys||[]), ...allRolePairs()].find(([n])=>n===r); return hit?hit[1]:'class'; };
+  loadGraph(t.nodes.map(r=>[r,kindOf(r)]), t.edges, p.pos);
+  buildPalette(); buildSide();
+}
+function allRolePairs(){ return PATTERNS.flatMap(p=>[...p.roles, ...(p.decoys||[])]); }
+function randomSabotage(){
+  const p=PATTERNS[Math.floor(Math.random()*PATTERNS.length)];
+  curTask={kind:'fix', patternId:p.id, fixId:'rnd'};
+  let es=p.edges.map(e=>[...e]);
+  const muts=1+Math.floor(Math.random()*2);
+  for(let i=0;i<muts;i++){
+    const kind=Math.floor(Math.random()*3), j=Math.floor(Math.random()*es.length);
+    if(kind===0){ // wrong verb
+      const others=VERBS.filter(v=>v.id!==es[j][1]); es[j][1]=others[Math.floor(Math.random()*others.length)].id;
+    } else if(kind===1){ // reverse
+      es[j]=[es[j][2],es[j][1],es[j][0]];
+    } else { es.splice(j,1); } // remove
+  }
+  loadGraph([...p.roles, ...(p.decoys||[])], es, p.pos);
+  buildPalette(); buildSide();
+  const td=$('#taskDetail');
+  if(td) td.innerHTML=`<div id="brief" style="margin-top:8px"><b>🎲 Sabotaged: ${p.name}</b><div class="muted">Something in this graph is wrong (1–3 mutations: wrong verb, reversed edge, or missing edge). Find and fix it, then Check.</div></div>`+patternBriefHTML(p,true);
+}
+
+/* =====================================================================
+   CHECKER
+   ===================================================================== */
+function checkGraph(){
+  const box=$('#findings'), sbox=$('#successBox');
+  if(!box) return;
+  sbox.style.display='none'; box.innerHTML='';
+  if(!curTask){ box.innerHTML='<div class="finding f-info"><span class="ic">i</span>Pick a task (or load a reference) to check against.</div>'; return; }
+  const p=PAT[curTask.patternId];
+  const roleOf=id=>{ const n=nodeById(id); return n?n.role:'?'; };
+  const user=edges.map(e=>[roleOf(e.src), e.verb, roleOf(e.dst)]);
+  const spec=p.edges.map(e=>[...e]);
+  const key=t=>t.join('→');
+  const userSet=new Set(user.map(key)), specSet=new Set(spec.map(key));
+  const findings=[];
+  const claimedUser=new Set(), claimedSpec=new Set();
+
+  // exact matches
+  spec.forEach((s,i)=>{ if(userSet.has(key(s))){ claimedSpec.add(i); user.forEach((u,j)=>{ if(key(u)===key(s)) claimedUser.add(j); }); }});
+  // wrong verb / reversed on the remainder
+  spec.forEach((s,i)=>{
+    if(claimedSpec.has(i)) return;
+    let uj=user.findIndex((u,j)=>!claimedUser.has(j)&&u[0]===s[0]&&u[2]===s[2]);
+    if(uj>=0){ findings.push(['verb',`${s[0]} → ${s[2]}: relationship should be “${VERB[s[1]].label}”, not “${VERB[user[uj][1]].label}”.`]); claimedSpec.add(i); claimedUser.add(uj); return; }
+    uj=user.findIndex((u,j)=>!claimedUser.has(j)&&u[0]===s[2]&&u[2]===s[0]&&u[1]===s[1]);
+    if(uj>=0){ findings.push(['rev',`“${VERB[s[1]].label}” between ${s[0]} and ${s[2]} points the wrong way — it should run ${s[0]} → ${s[2]}.`]); claimedSpec.add(i); claimedUser.add(uj); return; }
+    findings.push(['miss',`Missing: ${s[0]} —${VERB[s[1]].label}→ ${s[2]}.`]); claimedSpec.add(i);
+  });
+  user.forEach((u,j)=>{ if(!claimedUser.has(j)) findings.push(['extra',`Extra edge: ${u[0]} —${VERB[u[1]].label}→ ${u[2]} is not part of ${p.name}.`]); });
+  // decoy usage note
+  const decoyNames=(p.decoys||[]).map(d=>d[0]);
+  nodes.filter(n=>decoyNames.includes(n.role)).forEach(n=>{
+    const wired=edges.some(e=>e.src===n.id||e.dst===n.id);
+    if(!wired) findings.push(['info',`“${n.role}” sits unused — it belongs to the confusable neighbor, not to ${p.name}. (Not an error while unwired.)`]);
+  });
+
+  const hard=findings.filter(f=>f[0]!=='info');
+  if(hard.length===0){
+    box.innerHTML='';
+    findings.filter(f=>f[0]==='info').forEach(f=>box.insertAdjacentHTML('beforeend',`<div class="finding f-info"><span class="ic">i</span>${f[1]}</div>`));
+    sbox.style.display='block';
+    sbox.innerHTML=`<h3>✓ ${p.name} — correctly wired</h3>${p.intent}
+      <div class="row"><b>Lets you vary:</b> ${p.varies}</div>
+      ${p.ex?`<div class="row"><b>Real uses:</b> ${p.ex.join(' · ')}</div>`:''}
+      <div class="row"><b>vs neighbor:</b> ${p.neighbor}</div>`;
+    if(curTask.kind==='build') progress['build:'+p.id]=1;
+    if(curTask.kind==='fix' && curTask.fixId!=='rnd') progress['fix:'+curTask.fixId]=1;
+    localStorage.setItem(LSKEY, JSON.stringify(progress));
+    updateProgressPill(); buildSide(); // refresh checkmarks
+    const s2=$('#successBox'); if(s2){ s2.style.display='block'; s2.innerHTML=sbox.innerHTML; }
+  } else {
+    const icon={miss:'＋',extra:'✕',verb:'~',rev:'⇄',info:'i'};
+    findings.forEach(f=>box.insertAdjacentHTML('beforeend',
+      `<div class="finding f-${f[0]}"><span class="ic">${icon[f[0]]}</span>${f[1]}</div>`));
+    box.insertAdjacentHTML('afterbegin',`<div class="finding f-info"><span class="ic">i</span>${hard.length} issue${hard.length>1?'s':''} — the edge set <i>is</i> the pattern.</div>`);
+  }
+}
+function hint(){
+  if(!curTask) return;
+  const p=PAT[curTask.patternId];
+  const roleOf=id=>{ const n=nodeById(id); return n?n.role:'?'; };
+  const userSet=new Set(edges.map(e=>[roleOf(e.src),e.verb,roleOf(e.dst)].join('→')));
+  const missing=p.edges.find(s=>!userSet.has(s.join('→')));
+  const box=$('#findings'); if(!box) return;
+  if(missing) box.innerHTML=`<div class="finding f-miss"><span class="ic">💡</span>Next edge: <b>${missing[0]}</b> —${VERB[missing[1]].label}→ <b>${missing[2]}</b></div>`;
+  else box.innerHTML='<div class="finding f-ok"><span class="ic">💡</span>All spec edges present — run Check to see if anything extra or reversed remains.</div>';
+}
+function loadSolution(){
+  if(!curTask){ return; }
+  const p=PAT[curTask.patternId];
+  loadGraph(p.roles, p.edges, p.pos, p.decoys&&mode==='build'?[]:undefined);
+  const box=$('#findings'); if(box) box.innerHTML=`<div class="finding f-info"><span class="ic">i</span>Canonical ${p.name} loaded. Study the edge set, Clear, and rebuild it from memory.</div>`;
+}
+
+/* =====================================================================
+   CODE GENERATION
+   ===================================================================== */
+function ident(s){ return s.replace(/[^A-Za-z0-9]/g,''); }
+function lc(s){ s=ident(s); return s.charAt(0).toLowerCase()+s.slice(1); }
+function genCode(){
+  const pre=$('#codePre'); if(!pre) return;
+  if(!nodes.length){ pre.innerHTML='<span class="cm">// empty canvas — add nodes and wire them; the skeleton appears here</span>'; return; }
+  const out=[];
+  const kw=s=>`<span class="kw">${s}</span>`, ty=s=>`<span class="ty">${s}</span>`, cm=s=>`<span class="cm">${s}</span>`, fn=s=>`<span class="fn">${s}</span>`;
+  const outEdges=n=>edges.filter(e=>e.src===n.id);
+  const clientLines=[];
+  for(const n of nodes){
+    const name=ident(n.name);
+    const oe=outEdges(n);
+    if(n.kind==='client'){
+      clientLines.push(cm(`// ---- ${n.name} (usage) ----`));
+      for(const e of oe){
+        const d=nodeById(e.dst); if(!d) continue;
+        const dn=ident(d.name);
+        if(e.verb==='creates') clientLines.push(`${kw('const')} ${lc(dn)} = ${kw('new')} ${ty(dn)}();`);
+        else if(e.verb==='requests') clientLines.push(`${lc(dn)}.${fn('operation')}();  ${cm('// client calls through the stable interface')}`);
+        else clientLines.push(cm(`// client —${VERB[e.verb].label}→ ${dn}`));
+      }
+      continue;
+    }
+    const impl=oe.filter(e=>e.verb==='implements').map(e=>ident(nodeById(e.dst).name));
+    const ext =oe.filter(e=>e.verb==='extends').map(e=>ident(nodeById(e.dst).name));
+    let head='';
+    if(n.kind==='interface'){
+      out.push(`${kw('interface')} ${ty(name)} {\n  ${fn('operation')}(): ${ty('void')};\n}`);
+      continue;
+    }
+    head = (n.kind==='abstract'?kw('abstract')+' ':'')+kw('class')+' '+ty(name);
+    if(ext.length)  head+=' '+kw('extends')+' '+ty(ext[0]);
+    if(impl.length) head+=' '+kw('implements')+' '+impl.map(ty).join(', ');
+    const body=[];
+    for(const e of oe){
+      const d=nodeById(e.dst); if(!d) continue; const dn=ident(d.name);
+      switch(e.verb){
+        case 'delegates': body.push(`  ${kw('private')} ${lc(dn)}: ${ty(dn)};`,`  ${fn('operation')}() { ${kw('this')}.${lc(dn)}.${fn('operation')}(); }`); break;
+        case 'wraps':     body.push(`  ${kw('constructor')}(${kw('private')} wrapped: ${ty(dn)}) {}`,`  ${fn('operation')}() { ${cm('/* extra */')} ${kw('this')}.wrapped.${fn('operation')}(); }`); break;
+        case 'aggregates':body.push(`  ${kw('private')} ${lc(dn)}s: ${ty(dn)}[] = [];`); break;
+        case 'composes':  body.push(`  ${kw('private')} children: ${ty(dn)}[] = [];  ${cm('// part-whole tree')}`); break;
+        case 'creates':   body.push(`  ${fn('create')}(): ${ty(dn)} { ${kw('return')} ${kw('new')} ${ty(dn)}(); }`); break;
+        case 'clones':    body.push(`  ${fn('clone')}(): ${ty(dn)} { ${kw('return')} ${ty('Object')}.assign(${ty('Object')}.create(${ty(dn)}.prototype), ${kw('this')}); }`); break;
+        case 'notifies':  body.push(`  ${fn('notifyAll')}() { ${kw('this')}.${lc(dn)}s.forEach(o => o.${fn('update')}()); }`); break;
+        case 'switches':  body.push(`  ${fn('handle')}(ctx: ${ty(dn)}) { ${cm('/* work */')} ctx.${fn('setState')}(${kw('new')} ${ty('NextState')}()); }`); break;
+        case 'stores':    body.push(`  ${kw('private')} snapshot;  ${cm(`// captured from ${dn}, opaque to everyone else`)}`); break;
+        case 'iterates':  body.push(`  ${fn('next')}() { ${kw('return')} ${kw('this')}.${lc(dn)}.items[${kw('this')}.i++]; }`); break;
+        case 'visits':    body.push(`  ${fn('visit')}(e: ${ty(dn)}) { ${cm('/* one operation, many element classes */')} }`); break;
+        case 'requests':  body.push(`  ${cm(`// calls ${dn}.operation()`)}`); break;
+      }
+    }
+    out.push(head+' {\n'+(body.length?body.join('\n'):'  '+cm('// …'))+'\n}');
+  }
+  if(clientLines.length) out.push(clientLines.join('\n'));
+  pre.innerHTML=out.join('\n\n');
+}
+
+/* =====================================================================
+   SEQUENCE DIAGRAMS — GoF interaction diagrams (the runtime half).
+   parts: lifelines left→right. msgs: [from, to, label, kind]
+   kind: 'c' call (solid) · 'n' new/create (green dashed) · 'r' return (grey dashed)
+   from===to renders as a self-call hook.
+   ===================================================================== */
+const SEQ={
+ 'singleton':{parts:['aClient','Singleton (class)'],msgs:[
+   [0,1,'Instance()','c'],[1,1,'new Singleton() — first call only','c'],[1,0,'return uniqueInstance','r']]},
+ 'factory-method':{parts:['aClient','aConcreteCreator','aConcreteProduct'],msgs:[
+   [0,1,'AnOperation()','c'],[1,1,'FactoryMethod() — the subclass hook','c'],
+   [1,2,'new ConcreteProduct()','n'],[1,0,'return product','r']]},
+ 'abstract-factory':{parts:['aClient','aConcreteFactory1','aProductA1','aProductB1'],msgs:[
+   [0,1,'CreateProductA()','c'],[1,2,'new ProductA1()','n'],[1,0,'return productA','r'],
+   [0,1,'CreateProductB()','c'],[1,3,'new ProductB1()','n'],[1,0,'return productB','r']],
+   note:'both products come from the SAME factory — the family stays consistent'},
+ 'builder':{parts:['aClient','aDirector','aConcreteBuilder'],msgs:[
+   [0,2,'new ConcreteBuilder()','n'],[0,1,'new Director(aConcreteBuilder)','n'],
+   [0,1,'Construct()','c'],[1,2,'BuildPartA()','c'],[1,2,'BuildPartB()','c'],[1,2,'BuildPartC()','c'],
+   [0,2,'GetResult()','c']],
+   note:'the Director never sees the Product — only the Client asks the Builder for it'},
+ 'prototype':{parts:['aClient','aConcretePrototype','theCopy'],msgs:[
+   [0,1,'Clone()','c'],[1,2,'copy self — deep or shallow?','n'],[1,0,'return theCopy','r']]},
+ 'adapter':{parts:['aClient','anAdapter','anAdaptee'],msgs:[
+   [0,1,'Request()','c'],[1,2,'SpecificRequest() — translated call','c'],[1,0,'return converted result','r']]},
+ 'bridge':{parts:['aClient','anAbstraction','aConcreteImplementorA'],msgs:[
+   [0,1,'Operation()','c'],[1,2,'OperationImp() — via the implementor handle','c']]},
+ 'composite':{parts:['aClient','aComposite','aLeaf','aChildComposite'],msgs:[
+   [0,1,'Operation()','c'],[1,2,'Operation()','c'],[1,3,'Operation() — recurses down the tree','c']]},
+ 'decorator':{parts:['aClient','aDecorator','aConcreteComponent'],msgs:[
+   [0,1,'Operation()','c'],[1,1,'AddedBehavior()','c'],[1,2,'Operation() — forward to the wrapped one','c']]},
+ 'facade':{parts:['aClient','aFacade','SubsystemA','SubsystemB'],msgs:[
+   [0,1,'Operation()','c'],[1,2,'StepOne()','c'],[1,3,'StepTwo()','c'],[1,0,'return one simple result','r']]},
+ 'flyweight':{parts:['aClient','aFlyweightFactory','aFlyweight'],msgs:[
+   [0,1,'GetFlyweight(key)','c'],[1,2,'new Flyweight() — only on cache miss','n'],
+   [1,0,'return shared instance','r'],[0,2,'Operation(extrinsicState)','c']]},
+ 'proxy':{parts:['aClient','aProxy','aRealSubject'],msgs:[
+   [0,1,'Request()','c'],[1,2,'new RealSubject() — lazy, first use only','n'],
+   [1,2,'Request()','c'],[1,0,'return result','r']]},
+ 'chain':{parts:['aClient','handler1','handler2'],msgs:[
+   [0,1,'HandleRequest()','c'],[1,2,'HandleRequest() — cannot handle, pass on','c'],
+   [2,2,'process() — handled here','c']]},
+ 'command':{parts:['aClient','anInvoker','aCommand','aReceiver'],msgs:[
+   [0,2,'new ConcreteCommand(aReceiver)','n'],[0,1,'StoreCommand(aCommand)','c'],
+   [1,2,'Execute() — later, any time','c'],[2,3,'Action()','c']],
+   note:'construction and invocation are decoupled in TIME — that is the whole point'},
+ 'interpreter':{parts:['aClient','rootExpression','leftSubexpr','rightSubexpr'],msgs:[
+   [0,1,'Interpret(context)','c'],[1,2,'Interpret(context)','c'],
+   [1,3,'Interpret(context) — recursion over the grammar tree','c']]},
+ 'iterator':{parts:['aClient','anAggregate','anIterator'],msgs:[
+   [0,1,'CreateIterator()','c'],[1,2,'new ConcreteIterator(this)','n'],[1,0,'return iterator','r'],
+   [0,2,'First()','c'],[0,2,'Next() / IsDone()','c'],[0,2,'CurrentItem()','c']]},
+ 'mediator':{parts:['aListBox','aMediator','anEntryField'],msgs:[
+   [0,1,'WidgetChanged() — something happened','c'],[1,0,'GetSelection()','c'],
+   [1,2,'SetText() — coordinated reaction','c']],
+   note:'colleagues never talk to each other — every hop goes through the hub'},
+ 'memento':{parts:['aCaretaker','anOriginator','aMemento'],msgs:[
+   [0,1,'CreateMemento()','c'],[1,2,'new Memento()','n'],[1,2,'SetState()','c'],
+   [1,0,'return memento — opaque token','r'],
+   [0,1,'SetMemento(aMemento) — undo','c'],[1,2,'GetState()','c']]},
+ 'observer':{parts:['aClient','aConcreteSubject','observerA','observerB'],msgs:[
+   [0,1,'SetState()','c'],[1,1,'Notify()','c'],
+   [1,2,'Update()','c'],[2,1,'GetState() — pull the new state','c'],
+   [1,3,'Update()','c'],[3,1,'GetState()','c']]},
+ 'state':{parts:['aClient','aContext','stateA','stateB'],msgs:[
+   [0,1,'Request()','c'],[1,2,'Handle(this)','c'],
+   [2,1,'SetState(stateB) — the transition','c'],
+   [0,1,'Request() — same call again','c'],[1,3,'Handle(this) — different behavior','c']],
+   note:'the state object itself triggers the transition; the Context just delegates'},
+ 'strategy':{parts:['aClient','aContext','aConcreteStrategy'],msgs:[
+   [0,1,'ContextInterface()','c'],[1,2,'AlgorithmInterface()','c'],[2,1,'return result','r']]},
+ 'template-method':{parts:['aClient','aConcreteClass'],msgs:[
+   [0,1,'TemplateMethod() — defined in the abstract base','c'],
+   [1,1,'PrimitiveOperation1() — subclass override','c'],
+   [1,1,'PrimitiveOperation2() — subclass override','c']]},
+ 'visitor':{parts:['anObjectStructure','elementA','elementB','aConcreteVisitor'],msgs:[
+   [0,1,'Accept(aVisitor)','c'],[1,3,'VisitConcreteElementA(this) — double dispatch','c'],
+   [3,1,'OperationA()','c'],
+   [0,2,'Accept(aVisitor)','c'],[2,3,'VisitConcreteElementB(this)','c'],[3,2,'OperationB()','c']]},
+};
+
+function seqSVG(pid){
+  const s=SEQ[pid], P=s.parts, M=s.msgs, n=P.length;
+  const rowH=34, top=16, boxH=26, firstY=top+boxH+34;
+  const msgY=i=>firstY+i*rowH;
+  const maxMsg=Math.max(...M.map(m=>m[2].length));
+  const gap=Math.min(280, Math.max(185, maxMsg*6.4+36));
+  const X=i=>80+i*gap;
+  let W=X(n-1)+120;
+  M.forEach(m=>{ const [f,t,lbl]=m;
+    const need=(f===t? X(f)+54 : Math.min(X(f),X(t))+14)+lbl.length*6.45+24;
+    if(need>W) W=need; });
+  const H=msgY(M.length-1)+46;
+  // activation intervals: leftmost part active throughout; a callee's bar
+  // stretches over the consecutive messages it sends right after receiving one
+  const iv=P.map(()=>[]);
+  if(M.length) iv[0].push([msgY(0)-16, msgY(M.length-1)+20]);
+  M.forEach((m,k)=>{
+    const [f,t,,kd]=m;
+    if(kd==='r') return;
+    if(f===t){ iv[t].push([msgY(k)-8, msgY(k)+20]); return; }
+    let end=k;
+    for(let j=k+1;j<M.length;j++){ if(M[j][0]===t) end=j; else break; }
+    iv[t].push([msgY(k)-8, msgY(end)+18]);
+  });
+  const bars=iv.map(list=>{
+    list.sort((a,b)=>a[0]-b[0]);
+    const out=[];
+    for(const seg of list){ const L=out[out.length-1];
+      if(L && seg[0]<=L[1]+4) L[1]=Math.max(L[1],seg[1]); else out.push([...seg]); }
+    return out;
+  });
+  const active=(i,y)=>bars[i].some(b=>y>=b[0]&&y<=b[1]);
+  const edgeX=(i,y,side)=>X(i)+(active(i,y)?side*6:0);
+  let g='';
+  P.forEach((p,i)=>{ g+=`<line x1="${X(i)}" y1="${top+boxH}" x2="${X(i)}" y2="${H-8}" stroke="#3d444d" stroke-width="1.2" stroke-dasharray="5 5"/>`; });
+  bars.forEach((list,i)=>list.forEach(b=>{
+    g+=`<rect x="${X(i)-6}" y="${b[0]}" width="12" height="${b[1]-b[0]}" rx="2" fill="#242b33" stroke="#8b949e" stroke-width="1"/>`; }));
+  M.forEach((m,k)=>{
+    const [f,t,lbl,kd]=m, y=msgY(k);
+    const col = kd==='n' ? '#3fb950' : kd==='r' ? '#8b949e' : '#e6edf3';
+    const dash= kd==='n' ? ' stroke-dasharray="6 4"' : kd==='r' ? ' stroke-dasharray="4 4"' : '';
+    const mk  = kd==='r' ? 'sq-open' : kd==='n' ? 'sq-new' : 'sq-arr';
+    if(f===t){
+      const x=X(f)+6;
+      g+=`<path d="M ${x} ${y-2} h 40 v 16 h -34" fill="none" stroke="${col}" stroke-width="1.5"${dash} marker-end="url(#${mk})"/>`;
+      g+=`<text x="${x+48}" y="${y+11}" fill="#e6edf3" font-size="12">${lbl}</text>`;
+      return;
+    }
+    const dir=t>f?1:-1;
+    const x1=edgeX(f,y,dir), x2=edgeX(t,y,-dir);
+    g+=`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${col}" stroke-width="1.5"${dash} marker-end="url(#${mk})"/>`;
+    g+=`<text x="${Math.min(x1,x2)+14}" y="${y-6}" fill="#e6edf3" font-size="12">${lbl}</text>`;
+  });
+  P.forEach((p,i)=>{
+    const w=Math.max(74, p.length*7.4+18);
+    g+=`<rect x="${X(i)-w/2}" y="${top}" width="${w}" height="${boxH}" rx="4" fill="#1c2129" stroke="#8b949e" stroke-width="1.2"/>`;
+    g+=`<text x="${X(i)}" y="${top+17}" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-weight="600">${p}</text>`;
+  });
+  const defs=`<defs>
+    <marker id="sq-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#e6edf3"/></marker>
+    <marker id="sq-new" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3fb950"/></marker>
+    <marker id="sq-open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0,0 L10,5 L0,10" fill="none" stroke="#8b949e" stroke-width="1.6"/></marker>
+  </defs>`;
+  const cap=`<div class="seqCap"><b>${PAT[pid].name}</b> at runtime — solid = call · <span style="color:#3fb950">green dashed = new</span> · grey dashed = return${s.note?' · '+s.note:''}</div>`;
+  return cap+`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${defs}${g}</svg>`;
+}
+
+let lastSeqKey='';
+function seqPid(){
+  if(mode==='quiz' && !quiz.answered) return null;   // don't leak the answer
+  return curTask ? curTask.patternId : null;
+}
+function renderSeq(force){
+  const pane=$('#seqPane'); if(!pane) return;
+  const pid=seqPid(), key=pid||('none:'+mode);
+  if(!force && key===lastSeqKey) return;
+  lastSeqKey=key;
+  if(!pid || !SEQ[pid]){
+    pane.innerHTML='<div class="seqNote">'+(mode==='quiz'
+      ? 'Answer the scenario first — the sequence diagram would give it away.'
+      : 'Pick a task or load a reference — the pattern’s runtime story (its GoF interaction diagram) appears here while you wire the static structure.')+'</div>';
+    return;
+  }
+  pane.innerHTML=seqSVG(pid);
+}
+
+/* =====================================================================
+   SCENARIO DRILL
+   ===================================================================== */
+let quiz={cur:null, answered:false, streak:0};
+function newQuiz(){
+  const fresh=PATTERNS.filter(p=>!progress['quiz:'+p.id]);
+  const pool=fresh.length?fresh:PATTERNS;
+  let p=pool[Math.floor(Math.random()*pool.length)];
+  if(p.id===quiz.cur && pool.length>1) p=pool[(pool.indexOf(p)+1)%pool.length];
+  quiz.cur=p.id; quiz.answered=false;
+  clearGraph();
+}
+function quizChoices(p){
+  const ids=new Set([p.id]);
+  if(p.nb) ids.add(p.nb);
+  while(ids.size<4) ids.add(PATTERNS[Math.floor(Math.random()*PATTERNS.length)].id);
+  return [...ids].sort(()=>Math.random()-0.5);
+}
+function renderQuiz(){
+  const w=$('#quizWrap'); if(!w) return;
+  if(!quiz.cur){ newQuiz(); }
+  const p=PAT[quiz.cur];
+  const done=PATTERNS.filter(x=>progress['quiz:'+x.id]).length;
+  if(!quiz.choices || quiz.choicesFor!==p.id){ quiz.choices=quizChoices(p); quiz.choicesFor=p.id; }
+  w.innerHTML=`
+    <div style="font-size:12px;color:var(--muted);margin:4px 0 8px">cleared <b style="color:var(--ok)">${done}/23</b> patterns · streak <b style="color:var(--pick)">${quiz.streak}</b></div>
+    <div id="brief" style="font-size:13.5px">“${p.sc}”<div class="muted" style="margin-top:6px">Which pattern fits this problem shape?</div></div>
+    <div class="quiz-choices">${quiz.choices.map(id=>`<button class="qc" data-p="${id}" ${quiz.answered?'disabled':''}>${PAT[id].name}</button>`).join('')}</div>
+    <div id="quizFeedback"></div>
+    ${quiz.answered?'<button class="primary" id="qNext" style="margin-top:8px">Next scenario →</button>':''}`;
+  w.querySelectorAll('.qc').forEach(b=>b.onclick=()=>answerQuiz(b.dataset.p));
+  const nx=w.querySelector('#qNext'); if(nx) nx.onclick=()=>{ newQuiz(); renderQuiz(); };
+}
+function answerQuiz(pid){
+  if(quiz.answered) return;
+  quiz.answered=true;
+  const p=PAT[quiz.cur], chosen=PAT[pid], ok=pid===quiz.cur;
+  if(ok){ quiz.streak++; progress['quiz:'+p.id]=1; localStorage.setItem(LSKEY, JSON.stringify(progress)); updateProgressPill(); }
+  else quiz.streak=0;
+  // load the CORRECT canonical graph either way — visual reinforcement
+  const keep={...quiz};
+  curTask={kind:'ref', patternId:p.id};   // so member lookup resolves against the right pattern
+  loadGraph(p.roles, p.edges, p.pos);
+  quiz=keep;
+  renderQuiz();
+  const fb=$('#quizFeedback');
+  if(fb) fb.innerHTML = ok
+    ? `<div class="finding f-ok" style="margin-top:8px"><span class="ic">✓</span><span><b>${p.name}.</b> ${p.intent}<br><span style="color:var(--muted)">Real uses: ${p.ex.join(' · ')}</span></span></div>`
+    : `<div class="finding f-extra" style="margin-top:8px"><span class="ic">✕</span><span>Not ${chosen.name} — its trigger is “${chosen.trigger}”.<br><b>${p.name}</b> fits: ${p.trigger}.<br><span style="color:var(--muted)">${p.neighbor}</span></span></div>`;
+  // highlight chosen buttons
+  document.querySelectorAll('.qc').forEach(b=>{
+    if(b.dataset.p===quiz.cur) b.classList.add('right');
+    else if(b.dataset.p===pid) b.classList.add('wrong');
+  });
+}
+
+/* =====================================================================
+   HEADER WIRING
+   ===================================================================== */
+document.querySelectorAll('#modeTabs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#modeTabs button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); mode=b.dataset.mode; curTask=null; clearGraph();
+  buildPalette(); buildSide();
+});
+(function fillRef(){
+  const sel=$('#refSelect');
+  ['C','S','B'].forEach(cat=>{
+    const og=document.createElement('optgroup'); og.label=famName(cat);
+    PATTERNS.filter(p=>p.cat===cat).forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; og.appendChild(o); });
+    sel.appendChild(og);
+  });
+  sel.onchange=()=>{
+    if(!sel.value) return;
+    const p=PAT[sel.value];
+    curTask={kind:'ref', patternId:p.id};
+    loadGraph(p.roles, p.edges, p.pos);
+    buildSide();
+    sel.value='';
+  };
+})();
+$('#btnCheck').onclick=checkGraph;
+$('#btnHint').onclick=hint;
+$('#btnSolution').onclick=loadSolution;
+$('#btnClear').onclick=()=>{ clearGraph(); const b=$('#findings'); if(b) b.innerHTML=''; const s=$('#successBox'); if(s) s.style.display='none'; };
+const drawerEl=$('#codeDrawer');
+let drawerTab='code';
+function setDrawer(tab){
+  const open=drawerEl.classList.contains('open');
+  if(open && tab===drawerTab){ drawerEl.classList.remove('open'); }
+  else { drawerEl.classList.add('open'); drawerTab=tab; }
+  drawerEl.classList.toggle('seqmode', drawerTab==='seq');
+  document.querySelectorAll('.dtab').forEach(t=>t.classList.toggle('active', t.dataset.t===drawerTab));
+  $('#drawerCue').textContent = drawerEl.classList.contains('open') ? '▾ click tab to close' : '▸ click to open';
+  if(drawerTab==='seq' && drawerEl.classList.contains('open')) renderSeq(true);
+}
+$('#tabCode').onclick=()=>setDrawer('code');
+$('#tabSeq').onclick=()=>setDrawer('seq');
+function updateProgressPill(){
+  const total=PATTERNS.length*2+FIXTASKS.length; // 23 build + 23 scenario + 6 fix
+  const done=Object.keys(progress).length;
+  $('#doneCount').textContent=done; $('#totalCount').textContent=total;
+}
+
+/* test/debug API — read-only views over internal state + the ops the e2e suite drives */
+window.PG={
+  get nodes(){return nodes}, get edges(){return edges}, get mode(){return mode},
+  get curTask(){return curTask}, get view(){return view}, get progress(){return progress},
+  get quiz(){return quiz},
+  PATTERNS, PAT, VERB, SEQ, FIXTASKS,
+  addNode, addEdge, removeEdge, loadGraph, clearGraph, checkGraph, loadSolution,
+  startBuild, startFix, startRename, render, fitView, seqSVG,
+};
+
+/* boot */
+window.__booted=true;
+updateProgressPill(); buildPalette(); buildSide(); render();
+// welcome graph: load State as the opening reference (the session's worked example)
+(function(){ const p=PAT['state']; curTask={kind:'ref', patternId:'state'}; loadGraph(p.roles,p.edges,p.pos); buildSide(); })();
+</script>
+</body>
+</html>
