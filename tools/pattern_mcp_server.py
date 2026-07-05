@@ -36,7 +36,7 @@ function cut(startRe,endRe){
 const data=cut(/const VERBS = \[/, /\/\* =+\s*\n\s*STATE/);
 const seq =cut(/const SEQ=\{/, /\nfunction seqSVG/);
 console.log(eval(data+'\n'+seq+
-  ';JSON.stringify({VERBS,KINDS,PATTERNS,MEMBERS,KIND_DEFAULT_MEMBERS,FIXTASKS,SEQ})'));
+  ';JSON.stringify({VERBS,KINDS,PATTERNS,MEMBERS,KIND_DEFAULT_MEMBERS,FIXTASKS,SEQ,EXAMPLES})'));
 """
 
 
@@ -107,7 +107,16 @@ def get_pattern(pattern_id: str) -> dict:
         "roles": [{"name": r, "kind": k, "members": _members(r, p)} for r, k in p["roles"]],
         "decoy_roles": [{"name": r, "kind": k} for r, k in p.get("decoys", [])],
         "edges": p["edges"],
+        "concrete_example": _concrete(p["id"]),
     }
+
+
+def _concrete(pid):
+    ex = D.get("EXAMPLES", {}).get(pid)
+    if not ex:
+        return None
+    return {"title": ex["ex"], "story": ex["story"],
+            "roles": {role: {"name": m[0], "members": m[1]} for role, m in ex["map"].items()}}
 
 
 @mcp.tool()

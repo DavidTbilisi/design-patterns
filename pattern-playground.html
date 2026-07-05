@@ -141,6 +141,7 @@ header h1 span{color:var(--pick);}
     <button data-mode="quiz">Scenario&nbsp;drill</button>
   </div>
   <select id="refSelect" title="Load a canonical reference solution"><option value="">Load reference…</option></select>
+  <button id="btnConcrete" style="display:none" title="toggle the canonical concrete example"></button>
   <button id="btnCheck" class="primary">Check ✓</button>
   <button id="btnHint">Hint</button>
   <button id="btnSolution">Solution</button>
@@ -551,6 +552,131 @@ function roleMembers(role){
   return null;
 }
 
+/* Canonical concrete instantiations — one per pattern, GoF's own where iconic.
+   map: abstract role → [concrete class name, concrete members]. The header
+   toggle reskins the loaded graph in place: same nodes, same edges, real names. */
+const EXAMPLES = {
+'singleton':{ex:'Application-wide Logger', story:'Every service logs through the same single Logger; the first call creates it, everyone after that reuses it.',
+ map:{ Client:['OrderService',['» Logger.instance().log(…)']],
+       Singleton:['Logger',['- static instance','- Logger()  // private ctor','+ static instance()','+ log(msg)']] }},
+'factory-method':{ex:'Document editor (GoF p.107)', story:'Application knows WHEN a document gets created (File→New); only DrawingApplication knows WHICH class to instantiate.',
+ map:{ Client:['AppShell',['» app.newDocument()']],
+       Creator:['Application',['+ createDocument()*','+ newDocument()  // uses it']],
+       ConcreteCreator:['DrawingApplication',['+ createDocument()']],
+       Product:['Document',['+ open()','+ save()']],
+       ConcreteProduct:['DrawingDocument',['+ open()','+ save()']] }},
+'abstract-factory':{ex:'Cross-platform widgets (GoF p.87)', story:'Pick the Mac or Windows factory once at startup; every widget created afterwards automatically matches the theme.',
+ map:{ Client:['SettingsScreen',['» factory.createButton()']],
+       AbstractFactory:['WidgetFactory',['+ createButton()','+ createScrollbar()']],
+       ConcreteFactory:['MacWidgetFactory',['+ createButton()','+ createScrollbar()']],
+       ProductA:['MacButton',['+ paint()']],
+       ProductB:['MacScrollbar',['+ scroll()']] }},
+'builder':{ex:'RTF converter (GoF p.97)', story:'One RTF token walk; swap the converter and the identical parse yields ASCII, TeX, or HTML.',
+ map:{ Client:['WordProcessor',['» new HTMLConverter()','» reader.parseRTF()']],
+       Director:['RTFReader',['- builder: TextConverter','+ parseRTF()  // token loop']],
+       Builder:['TextConverter',['+ convertChar(c)','+ convertFont(f)','+ getResult()']],
+       ConcreteBuilder:['HTMLConverter',['+ convertChar(c)','+ convertFont(f)','+ getResult()']],
+       Product:['HTMLDocument',['- markup[]']] }},
+'prototype':{ex:'Music editor palette (GoF p.117)', story:'The palette tool never knows note classes — it just clones whichever prototype was installed in it.',
+ map:{ Client:['GraphicTool',['» proto.clone()  // stamp a copy']],
+       Prototype:['Graphic',['+ clone()']],
+       ConcretePrototype:['WholeNote',['- pitch, duration','+ clone()  // copies state']] }},
+'adapter':{ex:'TextShape (GoF p.139)', story:'The editor speaks Shape; TextView speaks getExtent(); TextShape translates one vocabulary into the other.',
+ map:{ Client:['DrawingEditor',['» shape.boundingBox()']],
+       Target:['Shape',['+ boundingBox()']],
+       Adapter:['TextShape',['- textView: TextView','+ boundingBox()  // translates']],
+       Adaptee:['TextView',['+ getExtent()']] }},
+'bridge':{ex:'Window / WindowImp (GoF p.151)', story:'Window kinds (icon, dialog) and platforms (X11, PM) multiply independently — the bridge keeps it N+M classes instead of N×M.',
+ map:{ Client:['Application',['» window.drawText()']],
+       Abstraction:['Window',['- imp: WindowImp','+ drawText()']],
+       RefinedAbstraction:['IconWindow',['+ drawBorder()  // richer']],
+       Implementor:['WindowImp',['+ devDrawText()']],
+       ConcreteImplementor:['XWindowImp',['+ devDrawText()  // X11 calls']] }},
+'composite':{ex:'Graphic tree (GoF p.163)', story:'draw() on a Picture recursively draws lines and nested pictures — the caller can’t tell one graphic from a thousand.',
+ map:{ Client:['DrawingEditor',['» graphic.draw()']],
+       Component:['Graphic',['+ draw()','+ add(g) / remove(g)']],
+       Leaf:['Line',['+ draw()  // pixels']],
+       Composite:['Picture',['- children: Graphic[]','+ draw()  // recurse','+ add(g)']] }},
+'decorator':{ex:'ScrollDecorator (GoF p.175)', story:'Wrap TextView in ScrollDecorator in BorderDecorator — each layer adds one skill, and peels off just as freely.',
+ map:{ Client:['Window',['» component.draw()']],
+       Component:['VisualComponent',['+ draw()']],
+       ConcreteComponent:['TextView',['+ draw()  // the text itself']],
+       Decorator:['ScrollDecorator',['- wrapped: VisualComponent','+ draw()  // scrollbars + pass']] }},
+'facade':{ex:'Compiler facade (GoF p.185)', story:'The IDE calls compile(); Scanner and CodeGenerator still exist for power users — the facade just spares everyone else the tour.',
+ map:{ Client:['IDE',['» compiler.compile(src)']],
+       Facade:['Compiler',['+ compile(src)']],
+       SubsystemA:['Scanner',['+ scan()']],
+       SubsystemB:['CodeGenerator',['+ generate()']] }},
+'flyweight':{ex:'Character glyphs (GoF p.195)', story:'A million-character document holds ~80 glyph objects; position and font travel in as extrinsic context.',
+ map:{ Client:['TextDocument',['» glyph.draw(pos, font)  // extrinsic']],
+       FlyweightFactory:['GlyphFactory',['- pool: Map<char,Glyph>','+ get(c)  // share or create']],
+       Flyweight:['Glyph',['+ draw(ctx)  // ctx = pos/font']],
+       ConcreteFlyweight:['CharacterGlyph',['- charCode  // intrinsic','+ draw(ctx)']] }},
+'proxy':{ex:'Lazy ImageProxy (GoF p.207)', story:'The document opens instantly; the 40 MB image loads only when it scrolls into view.',
+ map:{ Client:['DocumentEditor',['» image.draw()']],
+       Subject:['Graphic',['+ draw()','+ getExtent()']],
+       Proxy:['ImageProxy',['- fileName','- real: Image  // null until needed','+ draw()  // load on demand']],
+       RealSubject:['Image',['- pixels  // expensive','+ draw()']] }},
+'chain':{ex:'Context help / F1 (GoF p.223)', story:'F1 on the button: the button has no help topic, so the request climbs to the dialog, then the application.',
+ map:{ Client:['User',['» widget.handleHelp()  // F1']],
+       Handler:['HelpHandler',['- successor: HelpHandler','+ handleHelp()']],
+       ConcreteHandler1:['PrintButton',['+ handleHelp()  // no topic → pass']],
+       ConcreteHandler2:['PrintDialog',['+ handleHelp()  // shows help']] }},
+'command':{ex:'Menu items (GoF p.233)', story:'The menu item doesn’t know what pasting is — it stores a PasteCommand today, a MacroCommand tomorrow, and undo is execute’s mirror.',
+ map:{ Client:['Application',['» new PasteCommand(doc)','» item.setCommand(cmd)']],
+       Invoker:['MenuItem',['- command: Command','+ clicked()  // command.execute()']],
+       Command:['Command',['+ execute()','+ undo()']],
+       ConcreteCommand:['PasteCommand',['- doc: Document','+ execute()  // doc.paste()','+ undo()']],
+       Receiver:['Document',['+ paste()']] }},
+'interpreter':{ex:'Boolean rule engine (GoF p.243)', story:'(x AND y) is an object tree; evaluate() walks it with a context of variable bindings.',
+ map:{ Client:['RuleEngine',['» expr.evaluate(ctx)']],
+       AbstractExpression:['BooleanExp',['+ evaluate(ctx)']],
+       TerminalExpression:['VariableExp',['- name','+ evaluate(ctx)  // lookup']],
+       NonterminalExpression:['AndExp',['- left, right: BooleanExp','+ evaluate(ctx)  // both']] }},
+'iterator':{ex:'List traversal (GoF p.257)', story:'The report walks employees without knowing whether the collection is an array, a skiplist, or a DB cursor.',
+ map:{ Client:['ReportPrinter',['» it.next() until isDone()']],
+       Iterator:['Iterator',['+ first()','+ next()','+ isDone()','+ current()']],
+       ConcreteIterator:['ListIterator',['- list, index','+ next()']],
+       Aggregate:['EmployeeList',['+ createIterator()']] }},
+'mediator':{ex:'Font dialog (GoF p.273)', story:'Picking a font fills the size field and enables OK — but the widgets never reference each other, only the director.',
+ map:{ Mediator:['FontDialogDirector',['+ widgetChanged(w)  // routes']],
+       ColleagueA:['FontListBox',['- director','+ onSelect()  // tell director']],
+       ColleagueB:['SizeEntryField',['+ setText(s)']],
+       ColleagueC:['OkButton',['+ setEnabled(b)']] }},
+'memento':{ex:'Editor undo stack', story:'Ctrl+Z pops a Snapshot the UndoStack can hold but never read — only TextDocument sees inside.',
+ map:{ Originator:['TextDocument',['- text, cursor','+ createSnapshot()','+ restore(m)']],
+       Memento:['Snapshot',['- text, cursor  // sealed','+ getState()  // originator-only']],
+       Caretaker:['UndoStack',['- history: Snapshot[]','+ push(m) / pop()']] }},
+'observer':{ex:'ClockTimer (GoF p.293)', story:'One tick, every clock face redraws itself; the timer never knows what’s watching.',
+ map:{ Subject:['ClockTimer',['- observers[]','+ attach(o)','+ tick()  // state++ then notify']],
+       Observer:['TimeObserver',['+ update(timer)']],
+       ConcreteObserverA:['DigitalClock',['+ update(t)  // redraw digits']],
+       ConcreteObserverB:['AnalogClock',['+ update(t)  // move hands']] }},
+'state':{ex:'TCP connection (GoF p.305)', story:'One socket object, but open() means something different while Listening vs Established vs Closed — and each state object decides what comes next.',
+ map:{ Client:['NetworkApp',['» conn.open()  // never checks mode']],
+       Context:['TCPConnection',['- state: TCPState','+ open()  // delegates','+ setState(s)  // states call']],
+       State:['TCPState',['+ open(conn)']],
+       ConcreteStateA:['TCPListen',['+ open(conn)  // accept, → Established']],
+       ConcreteStateB:['TCPEstablished',['+ open(conn)  // already open']] }},
+'strategy':{ex:'Checkout shipping cost', story:'The shopper picks flat, weight-based, or express; Cart.total() never grows an if-chain about shipping.',
+ map:{ Client:['CheckoutPage',['» cart.total()  // strategy chosen here']],
+       Context:['Cart',['- shipping: ShippingStrategy','+ total()  // delegates']],
+       Strategy:['ShippingStrategy',['+ cost(order)']],
+       ConcreteStrategyA:['FlatRate',['+ cost(o)  // 5.99']],
+       ConcreteStrategyB:['ByWeight',['+ cost(o)  // kg × rate']] }},
+'template-method':{ex:'File importers', story:'run() fixes open→parse→validate→save forever; each format only fills in parse and validate.',
+ map:{ Client:['ImportJob',['» importer.run()']],
+       AbstractClass:['FileImporter',['+ run()  // open→parse→validate→save','# parse()*','# validate()*']],
+       ConcreteClassA:['CsvImporter',['# parse()  // split commas','# validate()']],
+       ConcreteClassB:['JsonImporter',['# parse()  // JSON.parse','# validate()']] }},
+'visitor':{ex:'Compiler AST passes (GoF p.331)', story:'The AST classes are frozen; every new pass — type-check, optimize, emit — is just another visitor.',
+ map:{ Client:['Compiler',['» node.accept(typeChecker)']],
+       Visitor:['NodeVisitor',['+ visitAssignment(n)','+ visitVariableRef(n)']],
+       ConcreteVisitor:['TypeCheckVisitor',['+ visitAssignment(n)  // check types','+ visitVariableRef(n)']],
+       Element:['AstNode',['+ accept(v)']],
+       ConcreteElementA:['AssignmentNode',['+ accept(v)  // v.visitAssignment(this)']] }},
+};
+
 /* Curated fix tasks — each seeds a sabotaged graph; target = canonical pattern spec. */
 const FIXTASKS = [
 {id:'fx-state', pattern:'state', title:'State wearing Strategy’s clothes',
@@ -592,6 +718,7 @@ const FIXTASKS = [
    ===================================================================== */
 let mode='play';                    // play | build | fix
 let curTask=null;                   // {kind:'build'|'fix', patternId, fixId?}
+let concrete=false;                 // show the canonical concrete example skin
 let nodes=[];                       // {id, role, name, kind, x, y, w, h}
 let edges=[];                       // {id, src, dst, verb}  (node ids)
 let nid=1, eid=1;
@@ -655,6 +782,7 @@ function loadGraph(roleList, edgeList, posMap, extraRoles){
     map[r]=addNode(r,k,p[0]*1.22,p[1]*1.15).id;   // stretch stock layouts for the wider UML boxes
   });
   (edgeList||[]).forEach(([s,v,d])=>{ if(map[s]&&map[d]) addEdge(map[s],map[d],v); });
+  if(concrete) refreshDims();
   fitView();
 }
 
@@ -704,8 +832,34 @@ function edgeMid(e){
   return [(x1+x2)/2, (y1+y2)/2-9+parOff(e)*0.75];
 }
 
+/* Concrete-example skin: same node, same role, different label + members. */
+function displayOf(n){
+  const ex=concrete && curTask && EXAMPLES[curTask.patternId];
+  const cm=ex && ex.map[n.role];
+  return cm ? {name:cm[0], members:cm[1], concrete:true}
+            : {name:n.name, members:n.members||[], concrete:false};
+}
+function refreshDims(){
+  nodes.forEach(n=>{
+    const d=displayOf(n);
+    const [w,h]=nodeDims(d.members);
+    n.w=Math.max(w, d.name.length*7.5+24); n.h=h;
+  });
+}
+
 function render(){
   world.setAttribute('transform',`translate(${view.x},${view.y}) scale(${view.k})`);
+  // concrete-example toggle button
+  const exm=curTask && EXAMPLES[curTask.patternId];
+  const bc=$('#btnConcrete');
+  if(bc){
+    if(exm){
+      bc.style.display='';
+      bc.textContent=(concrete?'◉ ':'○ ')+exm.ex.split(' (')[0];
+      bc.title=concrete?'showing the concrete example — click for abstract roles':'reskin as: '+exm.ex;
+      bc.classList.toggle('primary', concrete);
+    } else bc.style.display='none';
+  }
   // edges
   edgesG.innerHTML='';
   for(const e of edges){
@@ -734,16 +888,18 @@ function render(){
     g.setAttribute('transform',`translate(${n.x},${n.y})`);
     g.dataset.nid=n.id;
     const stereo=n.kind==='interface'||n.kind==='abstract';
-    const mems=(n.members||[]).map((m,i)=>{
+    const disp=displayOf(n);
+    const tag=disp.concrete ? `${k.tag} · plays ${n.role}` : k.tag;
+    const mems=disp.members.map((m,i)=>{
       const use=m.startsWith('»');
       return `<text class="mem${use?' use':''}" x="10" y="${60+i*15}">${m.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</text>`;
     }).join('');
     g.innerHTML=`
       <rect class="body" width="${n.w}" height="${n.h}" rx="8"/>
       <path d="M0,8 a8,8 0 0 1 8,-8 h${n.w-16} a8,8 0 0 1 8,8 v14 h-${n.w} z" fill="${k.hex}"/>
-      <text class="title" x="10" y="16">${n.name}</text>
-      ${stereo?`<text class="stereo" x="10" y="36">${k.tag}</text>`:`<text class="kindtag" x="10" y="36">${k.tag}</text>`}
-      ${n.members&&n.members.length?`<line x1="6" y1="44" x2="${n.w-6}" y2="44" stroke="var(--line)" stroke-width="1"/>`:''}
+      <text class="title" x="10" y="16">${disp.name}</text>
+      ${stereo?`<text class="stereo" x="10" y="36">${tag}</text>`:`<text class="kindtag" x="10" y="36">${tag}</text>`}
+      ${disp.members.length?`<line x1="6" y1="44" x2="${n.w-6}" y2="44" stroke="var(--line)" stroke-width="1"/>`:''}
       ${mems}
       <circle class="port in"  cx="0"      cy="38" r="5.5" data-nid="${n.id}" data-dir="in"/>
       <circle class="port out" cx="${n.w}" cy="38" r="5.5" data-nid="${n.id}" data-dir="out" data-anchor="out"/>
@@ -1057,6 +1213,7 @@ function patternBriefHTML(p, hideNeighbor){
     <div class="muted"><b style="color:var(--accent)">Trigger:</b> ${p.trigger}</div>
     <div class="muted"><b style="color:var(--ok)">Lets you vary:</b> ${p.varies}</div>
     ${p.ex?`<div class="muted"><b style="color:#d2a8ff">Real uses:</b> ${p.ex.join(' · ')}</div>`:''}
+    ${EXAMPLES[p.id]?`<div class="muted"><b style="color:#39c5cf">Canonical:</b> ${EXAMPLES[p.id].ex} — ${EXAMPLES[p.id].story}</div>`:''}
     ${hideNeighbor?'' :`<div class="muted"><b style="color:var(--pick)">≠ neighbor:</b> ${p.neighbor}</div>`}
   </div>`;
 }
@@ -1182,22 +1339,23 @@ function genCode(){
   const kw=s=>`<span class="kw">${s}</span>`, ty=s=>`<span class="ty">${s}</span>`, cm=s=>`<span class="cm">${s}</span>`, fn=s=>`<span class="fn">${s}</span>`;
   const outEdges=n=>edges.filter(e=>e.src===n.id);
   const clientLines=[];
+  const dName=id=>{ const x=nodeById(id); return x?ident(displayOf(x).name):'?'; };
   for(const n of nodes){
-    const name=ident(n.name);
+    const name=ident(displayOf(n).name);
     const oe=outEdges(n);
     if(n.kind==='client'){
       clientLines.push(cm(`// ---- ${n.name} (usage) ----`));
       for(const e of oe){
         const d=nodeById(e.dst); if(!d) continue;
-        const dn=ident(d.name);
+        const dn=dName(e.dst);
         if(e.verb==='creates') clientLines.push(`${kw('const')} ${lc(dn)} = ${kw('new')} ${ty(dn)}();`);
         else if(e.verb==='requests') clientLines.push(`${lc(dn)}.${fn('operation')}();  ${cm('// client calls through the stable interface')}`);
         else clientLines.push(cm(`// client —${VERB[e.verb].label}→ ${dn}`));
       }
       continue;
     }
-    const impl=oe.filter(e=>e.verb==='implements').map(e=>ident(nodeById(e.dst).name));
-    const ext =oe.filter(e=>e.verb==='extends').map(e=>ident(nodeById(e.dst).name));
+    const impl=oe.filter(e=>e.verb==='implements').map(e=>dName(e.dst));
+    const ext =oe.filter(e=>e.verb==='extends').map(e=>dName(e.dst));
     let head='';
     if(n.kind==='interface'){
       out.push(`${kw('interface')} ${ty(name)} {\n  ${fn('operation')}(): ${ty('void')};\n}`);
@@ -1208,7 +1366,7 @@ function genCode(){
     if(impl.length) head+=' '+kw('implements')+' '+impl.map(ty).join(', ');
     const body=[];
     for(const e of oe){
-      const d=nodeById(e.dst); if(!d) continue; const dn=ident(d.name);
+      const d=nodeById(e.dst); if(!d) continue; const dn=dName(e.dst);
       switch(e.verb){
         case 'delegates': body.push(`  ${kw('private')} ${lc(dn)}: ${ty(dn)};`,`  ${fn('operation')}() { ${kw('this')}.${lc(dn)}.${fn('operation')}(); }`); break;
         case 'wraps':     body.push(`  ${kw('constructor')}(${kw('private')} wrapped: ${ty(dn)}) {}`,`  ${fn('operation')}() { ${cm('/* extra */')} ${kw('this')}.wrapped.${fn('operation')}(); }`); break;
@@ -1477,6 +1635,7 @@ document.querySelectorAll('#modeTabs button').forEach(b=>b.onclick=()=>{
     sel.value='';
   };
 })();
+$('#btnConcrete').onclick=()=>{ concrete=!concrete; refreshDims(); render(); };
 $('#btnCheck').onclick=checkGraph;
 $('#btnHint').onclick=hint;
 $('#btnSolution').onclick=loadSolution;
@@ -1505,7 +1664,8 @@ window.PG={
   get nodes(){return nodes}, get edges(){return edges}, get mode(){return mode},
   get curTask(){return curTask}, get view(){return view}, get progress(){return progress},
   get quiz(){return quiz},
-  PATTERNS, PAT, VERB, SEQ, FIXTASKS,
+  PATTERNS, PAT, VERB, SEQ, FIXTASKS, EXAMPLES,
+  get concrete(){return concrete},
   addNode, addEdge, removeEdge, loadGraph, clearGraph, checkGraph, loadSolution,
   startBuild, startFix, startRename, render, fitView, seqSVG,
 };

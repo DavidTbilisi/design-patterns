@@ -201,6 +201,32 @@ test('rename keeps custom members instead of resetting to role defaults', async 
   eq(w.PG.nodes[0].members.join('|'), '+ turnOn()', 'custom members survived the rename');
 });
 
+test('concrete-example toggle reskins nodes in place; roles and checker unaffected', async ()=>{
+  const w=await freshFrame();
+  loadRef(w, 'state');
+  w.document.getElementById('btnConcrete').click();
+  assert(w.PG.concrete, 'concrete mode on');
+  const titles=[...w.document.querySelectorAll('.node .title')].map(t=>t.textContent);
+  assert(titles.includes('TCPConnection') && titles.includes('TCPListen'), 'concrete names shown: '+titles.join(','));
+  assert(w.PG.nodes.some(n=>n.role==='Context'), 'underlying roles unchanged');
+  assert([...w.document.querySelectorAll('.node .mem')].some(t=>t.textContent.includes('open(conn)')), 'concrete members shown');
+  w.checkGraph();
+  assert(w.document.getElementById('successBox').style.display==='block', 'checker still passes on roles');
+  assert(w.document.getElementById('codePre').textContent.includes('class TCPConnection'), 'codegen uses concrete names');
+  w.document.getElementById('btnConcrete').click();
+  const back=[...w.document.querySelectorAll('.node .title')].map(t=>t.textContent);
+  assert(back.includes('Context') && !back.includes('TCPConnection'), 'toggle off restores abstract roles');
+});
+
+test('every pattern has a complete concrete example (all roles mapped)', async ()=>{
+  const w=await freshFrame();
+  for(const p of w.PG.PATTERNS){
+    const ex=w.PG.EXAMPLES[p.id];
+    assert(ex && ex.ex && ex.story, p.id+' has no example');
+    for(const [r] of p.roles) assert(ex.map[r], `${p.id}: role ${r} unmapped`);
+  }
+});
+
 test('build task: correct wiring passes the check and persists progress', async ()=>{
   const w=await freshFrame();
   w.document.querySelector('#modeTabs button[data-mode="build"]').click();
